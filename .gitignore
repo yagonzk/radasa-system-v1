@@ -121,3 +121,6 @@ client/public/__manus__/version.json
 .env.*.local
 *.db
 *.db-journal
+
+# Vercel/Vite build output at project root
+/public/
