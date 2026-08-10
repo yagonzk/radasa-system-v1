@@ -1,6 +1,5 @@
-import express, { type Express, type Request, type Response } from "express";
-
-let coreAppPromise: Promise<Express> | null = null;
+import express, { type Request, type Response } from "express";
+import { createApp, registerErrors } from "../server/app";
 
 function requiredConfig() {
   const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
@@ -31,33 +30,23 @@ function restoreOriginalApiUrl(request: Request) {
   const query = parsed.searchParams.toString();
   const restored = query ? `${pathname}?${query}` : pathname;
 
-  // Aqui já estamos dentro do adaptador Express oficial da Vercel, então
-  // req.url é o IncomingMessage mutável esperado pelo Express.
   request.url = restored;
   request.originalUrl = restored;
 }
 
-async function loadCoreApp() {
-  if (!coreAppPromise) {
-    coreAppPromise = import("../server/app")
-      .then(({ createApp, registerErrors }) => {
-        const app = createApp();
-        registerErrors(app);
-        return app;
-      })
-      .catch((error) => {
-        coreAppPromise = null;
-        throw error;
-      });
-  }
-
-  return coreAppPromise;
-}
+// IMPORTANTE PARA A VERCEL:
+// createApp/registerErrors são importados ESTATICAMENTE no topo deste arquivo.
+// Assim, toda a árvore local do backend (server/**) entra no bundle da Function
+// durante o build. A versão anterior usava import() dinâmico e a Vercel deixou
+// uma referência runtime para /var/task/server/app, que não existia como JS
+// resolvível no ambiente serverless.
+const coreApp = createApp();
+registerErrors(coreApp);
 
 const gateway = express();
 gateway.disable("x-powered-by");
 
-gateway.use(async (request: Request, response: Response) => {
+gateway.use((request: Request, response: Response) => {
   restoreOriginalApiUrl(request);
 
   const { missing } = requiredConfig();
@@ -71,24 +60,7 @@ gateway.use(async (request: Request, response: Response) => {
     return;
   }
 
-  try {
-    const app = await loadCoreApp();
-    app(request, response);
-  } catch (error) {
-    console.error("[vercel-api] Falha ao carregar o backend Express:", error);
-
-    if (!response.headersSent) {
-      response.status(500).setHeader("Cache-Control", "no-store").json({
-        status: "error",
-        code: "BACKEND_INIT_FAILED",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Falha desconhecida ao inicializar o backend.",
-      });
-    }
-  }
+  coreApp(request, response);
 });
 
-// A Vercel possui suporte oficial a aplicações Express exportadas como default.
 export default gateway;
