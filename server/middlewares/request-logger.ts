@@ -1,4 +1,4 @@
-import { logger } from "../config/logger";
+import { logger } from "../config/logger.js";
 import type { RequestHandler } from "express";
 
 export const requestLogger: RequestHandler = (req, res, next) => {

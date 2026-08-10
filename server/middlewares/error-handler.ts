@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
-import { logger } from "../config/logger";
-import { AppError } from "../utils/app-error";
+import { logger } from "../config/logger.js";
+import { AppError } from "../utils/app-error.js";
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (error instanceof ZodError) {

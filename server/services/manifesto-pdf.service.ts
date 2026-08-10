@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 
 export const ROMANEIO_PARSER_VERSION = "2026.08.08.14";
 

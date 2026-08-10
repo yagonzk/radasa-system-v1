@@ -1,5 +1,5 @@
 import pdf from "pdf-parse";
-import type { CteInterpretado } from "./cte-documento.service";
+import type { CteInterpretado } from "./cte-documento.service.js";
 
 function cleanText(value: string) {
   return value

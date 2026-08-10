@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from "express";
-import { createApp, registerErrors } from "../server/app";
+import { createApp, registerErrors } from "../server/app.js";
 
 function requiredConfig() {
   const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
@@ -35,11 +35,10 @@ function restoreOriginalApiUrl(request: Request) {
 }
 
 // IMPORTANTE PARA A VERCEL:
-// createApp/registerErrors são importados ESTATICAMENTE no topo deste arquivo.
-// Assim, toda a árvore local do backend (server/**) entra no bundle da Function
-// durante o build. A versão anterior usava import() dinâmico e a Vercel deixou
-// uma referência runtime para /var/task/server/app, que não existia como JS
-// resolvível no ambiente serverless.
+// O projeto usa ESM (package.json: type=module). Por isso os imports relativos
+// do backend usam extensões .js explícitas. O Node.js exige extensão em imports
+// ESM no runtime; o TypeScript resolve esses specifiers .js para os arquivos .ts
+// durante o build da Vercel. O vercel.json também inclui server/shared/prisma na Function.
 const coreApp = createApp();
 registerErrors(coreApp);
 

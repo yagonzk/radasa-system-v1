@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildManifestoDedupeKey } from "./manifestos.service";
+import { buildManifestoDedupeKey } from "./manifestos.service.js";
 
 describe("proteção contra romaneio duplicado", () => {
   it("considera a mesma lista de romaneios duplicada mesmo em outra ordem", () => {

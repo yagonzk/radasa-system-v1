@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 
 const parser = new XMLParser({
   ignoreAttributes: false,

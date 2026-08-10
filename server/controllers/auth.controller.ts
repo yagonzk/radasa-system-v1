@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { authService } from "../services/auth.service";
+import { authService } from "../services/auth.service.js";
 
 export const authController = {
   login: async (req: Request, res: Response) =>

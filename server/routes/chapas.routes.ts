@@ -1,4 +1,4 @@
-import { crudRoutes } from "./crud.routes";
-import { chapasController } from "../controllers/chapas.controller";
-import { chapaBody } from "../validators/schemas";
+import { crudRoutes } from "./crud.routes.js";
+import { chapasController } from "../controllers/chapas.controller.js";
+import { chapaBody } from "../validators/schemas.js";
 export const chapasRoutes = crudRoutes(chapasController, chapaBody);

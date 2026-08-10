@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { estoqueService } from "../services/estoque.service";
+import { estoqueService } from "../services/estoque.service.js";
 export const estoqueController = {
   list: async (_req:Request,res:Response)=>res.json(await estoqueService.list()),
   resumo: async (_req:Request,res:Response)=>res.json(await estoqueService.resumo()),

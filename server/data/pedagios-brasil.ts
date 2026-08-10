@@ -1,4 +1,4 @@
-import { GENERATED_TOLL_PLAZAS, GENERATED_TOLL_META } from "./pedagios-nacional.generated";
+import { GENERATED_TOLL_PLAZAS, GENERATED_TOLL_META } from "./pedagios-nacional.generated.js";
 
 export type TollPricingRule =
   | { kind: "PER_AXLE"; perAxle: number; maxPrice?: number }

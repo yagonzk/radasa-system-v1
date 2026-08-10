@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 export const logsService = {
   list: () => prisma.auditLog.findMany({
     where: { action: { not: "PEDAGIO_CADASTRO" } },

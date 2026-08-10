@@ -1,5 +1,5 @@
-import { prisma } from "../lib/prisma";
-import { dateOnly, number } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { dateOnly, number } from "../utils/serialize.js";
 
 const startOfDay = (value?: string) => value ? new Date(`${value}T00:00:00.000`) : undefined;
 const endOfDay = (value?: string) => value ? new Date(`${value}T23:59:59.999`) : undefined;

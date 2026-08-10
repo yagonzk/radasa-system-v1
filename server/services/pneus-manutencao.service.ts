@@ -1,7 +1,7 @@
-import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/app-error";
-import { parseDateOnly } from "../utils/date";
-import { created, dateOnly, number } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { AppError } from "../utils/app-error.js";
+import { parseDateOnly } from "../utils/date.js";
+import { created, dateOnly, number } from "../utils/serialize.js";
 
 const ensurePneu = async (id: string) => { const pneu = await prisma.pneu.findFirst({ where: { id, deletedAt: null } }); if (!pneu) throw new AppError(404, "Pneu não encontrado."); return pneu; };
 const num = (v: any) => v == null ? null : number(v);

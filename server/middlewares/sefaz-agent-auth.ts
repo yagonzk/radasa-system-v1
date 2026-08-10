@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { env } from "../config/env";
+import { env } from "../config/env.js";
 
 function safeEqual(received: string, expected: string) {
   const left = Buffer.from(received);

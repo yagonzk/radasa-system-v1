@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateTolls, pedagiosProviderStatus } from "../services/pedagios.service";
-import { createPedagio, deletePedagio, listPedagios, materializeAutomaticPedagios, updatePedagio } from "../services/pedagios-storage.service";
+import { calculateTolls, pedagiosProviderStatus } from "../services/pedagios.service.js";
+import { createPedagio, deletePedagio, listPedagios, materializeAutomaticPedagios, updatePedagio } from "../services/pedagios-storage.service.js";
 
 export const pedagiosRoutes = Router();
 

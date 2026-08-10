@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 import multer from "multer";
 import {
   interpretarAbastecimentoXml,
   sugerirVinculosAbastecimento,
-} from "../services/abastecimento-xml.service";
+} from "../services/abastecimento-xml.service.js";
 import {
   abastecimentosService,
   type PoliticaDuplicidadeAbastecimento,
-} from "../services/abastecimentos.service";
+} from "../services/abastecimentos.service.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),

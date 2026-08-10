@@ -1,6 +1,6 @@
-import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/app-error";
-import { created, dateOnly, number } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { AppError } from "../utils/app-error.js";
+import { created, dateOnly, number } from "../utils/serialize.js";
 
 const serialize = (item: any) => ({
   ...item, quantidade: number(item.quantidade), valorUnitario: number(item.valorUnitario),

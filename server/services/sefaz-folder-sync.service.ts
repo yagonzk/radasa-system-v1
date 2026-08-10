@@ -1,8 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { env } from "../config/env";
-import { logger } from "../config/logger";
-import { prisma } from "../lib/prisma";
+import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
+import { prisma } from "../lib/prisma.js";
 import { sefazService } from "./sefaz.service";
 
 type FolderSyncState = {

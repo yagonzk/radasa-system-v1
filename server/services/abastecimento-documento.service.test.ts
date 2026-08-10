@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpretarTextoPdfAbastecimento } from "./abastecimento-documento.service";
+import { interpretarTextoPdfAbastecimento } from "./abastecimento-documento.service.js";
 
 const danfeText = `
 Recebemos de COMERCIO DE COMBUSTIVEIS MAE CAROLINA LTDA os produtos e/ou serviços constantes da Nota Fiscal Eletrônica indicada ao lado.

@@ -1,12 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
-import { crudRoutes } from "./crud.routes";
-import { abastecimentosController } from "../controllers/abastecimentos.controller";
-import { abastecimentoBody } from "../validators/schemas";
+import { crudRoutes } from "./crud.routes.js";
+import { abastecimentosController } from "../controllers/abastecimentos.controller.js";
+import { abastecimentoBody } from "../validators/schemas.js";
 import {
   interpretarDocumentoAbastecimento,
   interpretarTextoPdfAbastecimento,
-} from "../services/abastecimento-documento.service";
+} from "../services/abastecimento-documento.service.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),

@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { authController } from "../controllers/auth.controller";
-import { authenticate } from "../middlewares/auth";
-import { validate } from "../middlewares/validate";
-import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "../validators/schemas";
-import { asyncHandler } from "../utils/async-handler";
-import { createRateLimiter } from "../middlewares/rate-limit";
+import { authController } from "../controllers/auth.controller.js";
+import { authenticate } from "../middlewares/auth.js";
+import { validate } from "../middlewares/validate.js";
+import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "../validators/schemas.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { createRateLimiter } from "../middlewares/rate-limit.js";
 
 export const authRoutes = Router();
 

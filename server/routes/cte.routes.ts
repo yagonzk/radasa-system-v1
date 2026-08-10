@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { interpretarCteXml } from "../services/cte-documento.service";
-import { completarDadosAnttCte } from "../services/cte-antt-auto.service";
+import { interpretarCteXml } from "../services/cte-documento.service.js";
+import { completarDadosAnttCte } from "../services/cte-antt-auto.service.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),

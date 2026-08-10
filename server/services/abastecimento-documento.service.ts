@@ -1,7 +1,7 @@
 import {
   interpretarAbastecimentoXml,
   type AbastecimentoXmlInterpretado,
-} from "./abastecimento-xml.service";
+} from "./abastecimento-xml.service.js";
 
 export interface DocumentoProdutoInterpretado {
   codigo?: string | null;

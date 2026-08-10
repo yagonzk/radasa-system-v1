@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/app-error";
-import { parseDateOnly } from "../utils/date";
-import { created, dateOnly, number, tipoFromDb, tipoToDb } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { AppError } from "../utils/app-error.js";
+import { parseDateOnly } from "../utils/date.js";
+import { created, dateOnly, number, tipoFromDb, tipoToDb } from "../utils/serialize.js";
 
 const include = { produtos: { orderBy: { id: "asc" as const } } } as const;
 

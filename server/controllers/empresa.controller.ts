@@ -1,4 +1,4 @@
-import { crudController } from "./crud.controller";
-import { empresaService } from "../services/empresa.service";
+import { crudController } from "./crud.controller.js";
+import { empresaService } from "../services/empresa.service.js";
 
 export const empresaController = crudController(empresaService);

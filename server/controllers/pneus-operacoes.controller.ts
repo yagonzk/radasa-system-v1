@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { pneusOperacoesService } from "../services/pneus-operacoes.service";
+import { pneusOperacoesService } from "../services/pneus-operacoes.service.js";
 
 export const pneusOperacoesController = {
   async listInstallations(_req: Request, res: Response) { res.json(await pneusOperacoesService.listInstallations()); },

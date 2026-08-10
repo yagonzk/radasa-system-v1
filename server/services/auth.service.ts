@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { prisma } from "../lib/prisma";
-import { env } from "../config/env";
-import { AppError } from "../utils/app-error";
+import { prisma } from "../lib/prisma.js";
+import { env } from "../config/env.js";
+import { AppError } from "../utils/app-error.js";
 
 function publicUser(user: {
   id: string;

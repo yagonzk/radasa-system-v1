@@ -1,4 +1,4 @@
-import { crudRoutes } from "./crud.routes";
-import { fechamentosController } from "../controllers/fechamentos.controller";
-import { fechamentoBody } from "../validators/schemas";
+import { crudRoutes } from "./crud.routes.js";
+import { fechamentosController } from "../controllers/fechamentos.controller.js";
+import { fechamentoBody } from "../validators/schemas.js";
 export const fechamentosRoutes = crudRoutes(fechamentosController, fechamentoBody);

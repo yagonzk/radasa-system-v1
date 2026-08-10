@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpretarTextoManifestoPdf } from "./manifesto-pdf.service";
+import { interpretarTextoManifestoPdf } from "./manifesto-pdf.service.js";
 
 const OCR_TOTVS_PRINT_TO_PDF = `
 SIGA /FATRU41/v.12 ROMANEIO DE FRETE DT.Ref.: 05/08/2026

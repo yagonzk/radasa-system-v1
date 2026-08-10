@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "../lib/prisma";
-import { LOCAL_TOLL_PLAZAS, type LocalTollPlaza } from "../data/pedagios-brasil";
+import { prisma } from "../lib/prisma.js";
+import { LOCAL_TOLL_PLAZAS, type LocalTollPlaza } from "../data/pedagios-brasil.js";
 
 const ACTION = "PEDAGIO_CADASTRO";
 const METHOD = "CONFIG";

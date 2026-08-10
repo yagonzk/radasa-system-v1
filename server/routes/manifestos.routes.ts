@@ -1,13 +1,13 @@
 import { Router } from "express";
-import { crudRoutes } from "./crud.routes";
-import { manifestosController } from "../controllers/manifestos.controller";
-import { manifestosService } from "../services/manifestos.service";
-import { manifestoBody } from "../validators/schemas";
+import { crudRoutes } from "./crud.routes.js";
+import { manifestosController } from "../controllers/manifestos.controller.js";
+import { manifestosService } from "../services/manifestos.service.js";
+import { manifestoBody } from "../validators/schemas.js";
 import {
   interpretarTextoManifestoPdf,
   sugerirVinculosManifestoPdf,
   sugerirVinculosManifestosPdf,
-} from "../services/manifesto-pdf.service";
+} from "../services/manifesto-pdf.service.js";
 
 export const manifestosRoutes = Router();
 

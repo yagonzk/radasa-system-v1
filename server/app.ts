@@ -1,13 +1,13 @@
 import cors, { type CorsOptions } from "cors";
 import express from "express";
 import helmet from "helmet";
-import { env } from "./config/env";
-import { apiRoutes } from "./routes";
-import { requestLogger } from "./middlewares/request-logger";
-import { sanitizeInputs } from "./middlewares/sanitize";
-import { notFound } from "./middlewares/not-found";
-import { errorHandler } from "./middlewares/error-handler";
-import { createRateLimiter } from "./middlewares/rate-limit";
+import { env } from "./config/env.js";
+import { apiRoutes } from "./routes/index.js";
+import { requestLogger } from "./middlewares/request-logger.js";
+import { sanitizeInputs } from "./middlewares/sanitize.js";
+import { notFound } from "./middlewares/not-found.js";
+import { errorHandler } from "./middlewares/error-handler.js";
+import { createRateLimiter } from "./middlewares/rate-limit.js";
 
 export function createApp() {
   const app = express();

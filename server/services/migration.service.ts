@@ -1,6 +1,6 @@
-import { prisma } from "../lib/prisma";
-import { parseDateOnly } from "../utils/date";
-import { tipoToDb } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { parseDateOnly } from "../utils/date.js";
+import { tipoToDb } from "../utils/serialize.js";
 
 export const migrationService = {
   async importLegacy(data: any) {

@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { asyncHandler } from "../utils/async-handler";
-import { validate } from "../middlewares/validate";
-import { bodySchema, idParamsSchema, partialBodySchema } from "../validators/schemas";
+import { asyncHandler } from "../utils/async-handler.js";
+import { validate } from "../middlewares/validate.js";
+import { bodySchema, idParamsSchema, partialBodySchema } from "../validators/schemas.js";
 import type { ZodObject, ZodRawShape } from "zod";
 
 export function crudRoutes(controller: any, schema: ZodObject<ZodRawShape>) {

@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm run vercel-build",
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "{server/**,shared/**,prisma/**}"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/health",

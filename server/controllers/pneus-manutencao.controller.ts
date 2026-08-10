@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { pneusManutencaoService } from "../services/pneus-manutencao.service";
+import { pneusManutencaoService } from "../services/pneus-manutencao.service.js";
 export const pneusManutencaoController={
  get:async(req:Request,res:Response)=>res.json(await pneusManutencaoService.get(req.params.id)),
  addSulco:async(req:Request,res:Response)=>res.status(201).json(await pneusManutencaoService.addSulco(req.params.id,req.body)),

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
-import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/app-error";
+import { prisma } from "../lib/prisma.js";
+import { AppError } from "../utils/app-error.js";
 
 const select = {
   id: true,

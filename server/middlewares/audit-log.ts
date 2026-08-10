@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
-import { prisma, trackPrismaTask } from "../lib/prisma";
-import { logger } from "../config/logger";
+import { prisma, trackPrismaTask } from "../lib/prisma.js";
+import { logger } from "../config/logger.js";
 
 const labels: Record<string, string> = {
   motoristas: "motorista", chapas: "chapa", clientes: "cliente", empresa: "empresa", produtos: "produto",

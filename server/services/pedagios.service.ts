@@ -1,5 +1,5 @@
-import { LOCAL_TOLL_PLAZAS, NATIONAL_TOLL_BASE_META, type LocalTollPlaza } from "../data/pedagios-brasil";
-import { listPedagios } from "./pedagios-storage.service";
+import { LOCAL_TOLL_PLAZAS, NATIONAL_TOLL_BASE_META, type LocalTollPlaza } from "../data/pedagios-brasil.js";
+import { listPedagios } from "./pedagios-storage.service.js";
 
 export type PedagioVehicleType =
   | "TRUCK_WITH_TWO_SINGLE_AXIS"

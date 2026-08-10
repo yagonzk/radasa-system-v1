@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../lib/prisma";
-import { ciotBody } from "../validators/schemas";
-import { anttCiotService } from "../services/antt-ciot.service";
+import { prisma } from "../lib/prisma.js";
+import { ciotBody } from "../validators/schemas.js";
+import { anttCiotService } from "../services/antt-ciot.service.js";
 
 function decimal(value: unknown) {
   const parsed = Number(value);

@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { sefazAgentController } from "../controllers/sefaz-agent.controller";
-import { authenticateSefazAgent } from "../middlewares/sefaz-agent-auth";
-import { validate } from "../middlewares/validate";
-import { asyncHandler } from "../utils/async-handler";
-import { bodySchema } from "../validators/schemas";
-import { sefazAgentImportBody } from "../validators/sefaz-agent.schemas";
+import { sefazAgentController } from "../controllers/sefaz-agent.controller.js";
+import { authenticateSefazAgent } from "../middlewares/sefaz-agent-auth.js";
+import { validate } from "../middlewares/validate.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { bodySchema } from "../validators/schemas.js";
+import { sefazAgentImportBody } from "../validators/sefaz-agent.schemas.js";
 
 export const sefazAgentRoutes = Router();
 

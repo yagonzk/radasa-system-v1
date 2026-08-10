@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { formatDateOnly } from "./date";
+import { formatDateOnly } from "./date.js";
 
 export const number = (value: Prisma.Decimal | number) => Number(value);
 export const created = (value: Date) => value.toISOString();

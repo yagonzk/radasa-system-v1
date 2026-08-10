@@ -1,3 +1,3 @@
-import { crudController } from "./crud.controller";
-import { chapasService } from "../services/chapas.service";
+import { crudController } from "./crud.controller.js";
+import { chapasService } from "../services/chapas.service.js";
 export const chapasController = crudController(chapasService);

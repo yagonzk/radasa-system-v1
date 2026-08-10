@@ -3,10 +3,10 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
-import { createApp, registerErrors } from "./app";
-import { env } from "./config/env";
-import { logger } from "./config/logger";
-import { prisma } from "./lib/prisma";
+import { createApp, registerErrors } from "./app.js";
+import { env } from "./config/env.js";
+import { logger } from "./config/logger.js";
+import { prisma } from "./lib/prisma.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

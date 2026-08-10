@@ -1,8 +1,8 @@
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import type { UserRole } from "@prisma/client";
-import { env } from "../config/env";
-import { AppError } from "../utils/app-error";
+import { env } from "../config/env.js";
+import { AppError } from "../utils/app-error.js";
 
 type TokenPayload = { sub: string; email: string; role: UserRole };
 

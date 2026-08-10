@@ -1,4 +1,4 @@
-import type { LocalTollPlaza } from "./pedagios-brasil";
+import type { LocalTollPlaza } from "./pedagios-brasil.js";
 
 // GERADO A PARTIR DO PORTAL DE DADOS ABERTOS DA ANTT (snapshot 29/07/2026).
 export const GENERATED_TOLL_PLAZAS: LocalTollPlaza[] = [

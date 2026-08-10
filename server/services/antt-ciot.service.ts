@@ -1,8 +1,8 @@
 import https from "node:https";
 import tls from "node:tls";
 import axios, { type AxiosInstance } from "axios";
-import { prisma } from "../lib/prisma";
-import { env } from "../config/env";
+import { prisma } from "../lib/prisma.js";
+import { env } from "../config/env.js";
 
 const digits = (value: unknown) => String(value ?? "").replace(/\D/g, "");
 const text = (value: unknown) => String(value ?? "").trim();

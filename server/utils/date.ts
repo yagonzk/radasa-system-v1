@@ -1,4 +1,4 @@
-import { AppError } from "./app-error";
+import { AppError } from "./app-error.js";
 
 export function parseDateOnly(value: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {

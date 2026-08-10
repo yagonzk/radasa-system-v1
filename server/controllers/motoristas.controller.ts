@@ -1,3 +1,3 @@
-import { crudController } from "./crud.controller";
-import { motoristasService } from "../services/motoristas.service";
+import { crudController } from "./crud.controller.js";
+import { motoristasService } from "../services/motoristas.service.js";
 export const motoristasController = crudController(motoristasService);

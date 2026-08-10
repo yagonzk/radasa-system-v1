@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { UserRole } from "@prisma/client";
-import { requireRole } from "../middlewares/auth";
-import { pneusGestaoController } from "../controllers/pneus-gestao.controller";
-import { pneusController } from "../controllers/pneus.controller";
-import { pneusOperacoesController } from "../controllers/pneus-operacoes.controller";
-import { pneusManutencaoController } from "../controllers/pneus-manutencao.controller";
-import { asyncHandler } from "../utils/async-handler";
-import { validate } from "../middlewares/validate";
-import { bodySchema, partialBodySchema, pneuBody, pneuInstalacaoBody, pneuRetiradaBody, pneuRodizioBody, pneuSulcoBody, pneuCalibragemBody, pneuRecapagemBody, pneuConsertoBody, pneuInspecaoBody } from "../validators/schemas";
+import { requireRole } from "../middlewares/auth.js";
+import { pneusGestaoController } from "../controllers/pneus-gestao.controller.js";
+import { pneusController } from "../controllers/pneus.controller.js";
+import { pneusOperacoesController } from "../controllers/pneus-operacoes.controller.js";
+import { pneusManutencaoController } from "../controllers/pneus-manutencao.controller.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { validate } from "../middlewares/validate.js";
+import { bodySchema, partialBodySchema, pneuBody, pneuInstalacaoBody, pneuRetiradaBody, pneuRodizioBody, pneuSulcoBody, pneuCalibragemBody, pneuRecapagemBody, pneuConsertoBody, pneuInspecaoBody } from "../validators/schemas.js";
 
 export const pneusRoutes = Router();
 

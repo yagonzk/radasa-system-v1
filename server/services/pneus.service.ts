@@ -1,7 +1,7 @@
-import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/app-error";
-import { parseDateOnly } from "../utils/date";
-import { created, dateOnly, number } from "../utils/serialize";
+import { prisma } from "../lib/prisma.js";
+import { AppError } from "../utils/app-error.js";
+import { parseDateOnly } from "../utils/date.js";
+import { created, dateOnly, number } from "../utils/serialize.js";
 
 const include = { fotos: true, eventos: { orderBy: { data: "desc" as const } }, recapagens: { orderBy: { numeroRecapagem: "desc" as const } }, consertos: { orderBy: { data: "desc" as const } }, medicoesSulco: { orderBy: { data: "desc" as const }, take: 12 }, calibragens: { orderBy: { data: "desc" as const }, take: 1 }, inspecoes: { orderBy: { data: "desc" as const }, take: 1 } } as const;
 const serialize = (p: any) => ({
