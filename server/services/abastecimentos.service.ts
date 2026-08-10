@@ -316,7 +316,7 @@ export const abastecimentosService = {
     };
     const produtos = buildProducts(merged.produtos);
     await ensureReferences(merged.clienteId, merged.veiculoId, produtos.map((p) => p.produtoId));
-    return serialize(await prisma.$transaction(async (tx) => {
+    return serialize(await prisma.$transaction(async (tx: any) => {
       await tx.abastecimentoProduto.deleteMany({ where: { abastecimentoId: id } });
       return tx.abastecimento.update({
         where: { id },

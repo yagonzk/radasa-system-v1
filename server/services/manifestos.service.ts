@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../utils/app-error.js";
 import { parseDateOnly } from "../utils/date.js";
@@ -144,7 +143,7 @@ async function serializableTransaction<T>(work: (tx: any) => Promise<T>) {
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
       return await prisma.$transaction(work, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        isolationLevel: "Serializable" as any,
         maxWait: 5_000,
         timeout: 15_000,
       });

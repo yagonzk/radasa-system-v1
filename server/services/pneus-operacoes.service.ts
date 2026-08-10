@@ -53,7 +53,7 @@ export const pneusOperacoesService = {
     });
     if (occupied) throw new AppError(409, "Esta posição já possui um pneu instalado.");
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: any) => {
       const installation = await tx.pneuInstalacao.create({
         data: {
           pneuId,
@@ -94,7 +94,7 @@ export const pneusOperacoesService = {
     });
     if (!current) throw new AppError(404, "Este pneu não possui instalação ativa.");
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: any) => {
       const installation = await tx.pneuInstalacao.update({
         where: { id: current.id },
         data: {
@@ -140,10 +140,10 @@ export const pneusOperacoesService = {
     if (destinations.size !== input.movimentos.length) throw new AppError(400, "As posições de destino não podem se repetir.");
 
     const ids = input.movimentos.map((m: any) => m.pneuId);
-    const active = await prisma.pneuInstalacao.findMany({ where: { pneuId: { in: ids }, ativo: true } });
+    const active: any[] = await prisma.pneuInstalacao.findMany({ where: { pneuId: { in: ids }, ativo: true } });
     if (active.length !== ids.length) throw new AppError(409, "Todos os pneus do rodízio precisam estar instalados.");
 
-    const byPneu = new Map(active.map((i) => [i.pneuId, i]));
+    const byPneu = new Map<string, any>(active.map((i: any) => [i.pneuId, i]));
     for (const movement of input.movimentos) {
       const current = byPneu.get(movement.pneuId);
       if (!current || current.eixo !== movement.eixoOrigem || current.posicao !== movement.posicaoOrigem) {
@@ -151,7 +151,7 @@ export const pneusOperacoesService = {
       }
     }
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: any) => {
       for (const current of active) {
         await tx.pneuInstalacao.update({ where: { id: current.id }, data: { eixo: `TEMP-${current.id}`, posicao: `TEMP-${current.id}` } });
       }

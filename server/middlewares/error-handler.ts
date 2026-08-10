@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { logger } from "../config/logger.js";
@@ -13,14 +12,22 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     return res.status(error.statusCode).json({ message: error.message, details: error.details });
   }
 
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2002") return res.status(409).json({ message: "Registro duplicado." });
-    if (error.code === "P2003") return res.status(409).json({ message: "Registro vinculado a outros dados." });
-    if (error.code === "P2025") return res.status(404).json({ message: "Registro não encontrado." });
-    if (error.code === "P2034") return res.status(409).json({ message: "Conflito de gravação. Tente novamente." });
-  }
+  const prismaCode =
+    typeof error === "object" && error !== null
+      ? (error as { code?: unknown }).code
+      : undefined;
 
-  if (error instanceof Prisma.PrismaClientInitializationError) {
+  if (prismaCode === "P2002") return res.status(409).json({ message: "Registro duplicado." });
+  if (prismaCode === "P2003") return res.status(409).json({ message: "Registro vinculado a outros dados." });
+  if (prismaCode === "P2025") return res.status(404).json({ message: "Registro não encontrado." });
+  if (prismaCode === "P2034") return res.status(409).json({ message: "Conflito de gravação. Tente novamente." });
+
+  const errorName =
+    typeof error === "object" && error !== null
+      ? String((error as { name?: unknown }).name ?? error.constructor?.name ?? "")
+      : "";
+
+  if (errorName === "PrismaClientInitializationError") {
     logger.error({ error, method: req.method, url: req.originalUrl }, "Banco temporariamente indisponível");
     return res.status(503).json({ message: "Banco de dados temporariamente indisponível. A importação tentará novamente." });
   }

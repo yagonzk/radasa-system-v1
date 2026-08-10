@@ -9,7 +9,11 @@ const serialize = (item: any) => ({
 
 async function saldoProduto(produtoId: string, excludeId?: string) {
   const rows = await prisma.estoqueMovimentacao.findMany({ where: { produtoId, ...(excludeId ? { id: { not: excludeId } } : {}) } });
-  return rows.reduce((total, row) => total + (row.tipo === "ENTRADA" ? number(row.quantidade) : -number(row.quantidade)), 0);
+  return rows.reduce(
+    (total: number, row: any) =>
+      total + (row.tipo === "ENTRADA" ? number(row.quantidade) : -number(row.quantidade)),
+    0,
+  );
 }
 
 export const estoqueService = {
@@ -18,11 +22,17 @@ export const estoqueService = {
   },
   async resumo() {
     const [produtos, movimentos] = await Promise.all([prisma.produto.findMany({ orderBy: { nome: "asc" } }), prisma.estoqueMovimentacao.findMany()]);
-    return produtos.map(produto => {
-      const rows = movimentos.filter(row => row.produtoId === produto.id);
-      const entradas = rows.filter(row => row.tipo === "ENTRADA").reduce((a,row)=>a+number(row.quantidade),0);
-      const saidas = rows.filter(row => row.tipo === "SAIDA").reduce((a,row)=>a+number(row.quantidade),0);
-      const valorSaidas = rows.filter(row => row.tipo === "SAIDA").reduce((a,row)=>a+number(row.valorTotal),0);
+    return produtos.map((produto: any) => {
+      const rows = movimentos.filter((row: any) => row.produtoId === produto.id);
+      const entradas = rows
+        .filter((row: any) => row.tipo === "ENTRADA")
+        .reduce((a: number, row: any) => a + number(row.quantidade), 0);
+      const saidas = rows
+        .filter((row: any) => row.tipo === "SAIDA")
+        .reduce((a: number, row: any) => a + number(row.quantidade), 0);
+      const valorSaidas = rows
+        .filter((row: any) => row.tipo === "SAIDA")
+        .reduce((a: number, row: any) => a + number(row.valorTotal), 0);
       return { produto, entradas, saidas, estoque: entradas-saidas, valorSaidas };
     });
   },

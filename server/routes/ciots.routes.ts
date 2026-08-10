@@ -409,7 +409,7 @@ ciotsRoutes.delete("/:id", async (req, res, next) => {
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.ciotCte.deleteMany({
         where: { ciotId: current.id },
       });

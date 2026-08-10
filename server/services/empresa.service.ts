@@ -71,7 +71,7 @@ export const empresaService = {
   },
 
   async create(data: any) {
-    const item = await prisma.$transaction(async (tx) => {
+    const item = await prisma.$transaction(async (tx: any) => {
       if (data.empresaPadrao) {
         await tx.empresa.updateMany({
           where: { empresaPadrao: true },
@@ -96,7 +96,7 @@ export const empresaService = {
       throw new AppError(404, "Empresa não encontrada.");
     }
 
-    const item = await prisma.$transaction(async (tx) => {
+    const item = await prisma.$transaction(async (tx: any) => {
       if (data.empresaPadrao) {
         await tx.empresa.updateMany({
           where: {

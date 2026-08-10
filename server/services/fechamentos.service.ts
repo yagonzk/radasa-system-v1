@@ -78,7 +78,7 @@ export const fechamentosService = {
   async update(id: string, input: any) {
     await ensureMotoristaDisponivel(input.motoristaId, id);
     const valorTotal = await calcularValorTotal(input.viagens);
-    const item = await prisma.$transaction(async (tx) => {
+    const item = await prisma.$transaction(async (tx: any) => {
       await tx.fechamentoViagem.deleteMany({ where: { fechamentoId: id } });
       return tx.fechamento.update({
         where: { id },

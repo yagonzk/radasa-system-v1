@@ -83,3 +83,9 @@ A aplicação continua com importações em lote, mas Functions da Vercel têm l
 A rota `/api/health` é uma Function isolada usando o padrão Web Standard atual da Vercel e não carrega Express nem Prisma. Ela deve responder mesmo quando o backend estiver com configuração incompleta.
 
 As demais rotas `/api/*` são encaminhadas para `api/index.ts`, que exporta uma aplicação Express como `default`, usando o adaptador oficial da Vercel. Se faltar `DATABASE_URL` ou `JWT_SECRET`, a API retorna JSON 503 em vez de derrubar a Function.
+
+
+## Compatibilidade do typecheck da Function
+
+A API evita depender do namespace de tipos `Prisma` durante a compilação da Vercel Function.
+Os tipos de callbacks transacionais críticos foram explicitados para que o empacotamento serverless não falhe caso o typecheck aconteça antes de o cliente gerado ser carregado.

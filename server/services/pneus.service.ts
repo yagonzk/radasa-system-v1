@@ -49,7 +49,7 @@ export const pneusService = {
     }
     const merged = { ...serialize(current), ...input };
     const statusChanged = input.status && input.status !== current.status;
-    return serialize(await prisma.$transaction(async tx => {
+    return serialize(await prisma.$transaction(async (tx: any) => {
       if (input.fotos) { await tx.pneuFoto.deleteMany({ where: { pneuId: id } }); }
       return tx.pneu.update({ where: { id }, data: { ...data(merged), ...(input.fotos ? { fotos: { create: input.fotos.map((url: string) => ({ url })) } } : {}), eventos: { create: { tipo: statusChanged ? "STATUS" : "ALTERACAO", observacoes: statusChanged ? `Status alterado de ${current.status} para ${input.status}.` : "Dados cadastrais atualizados.", dados: statusChanged ? { anterior: current.status, atual: input.status } : undefined } } }, include });
     }));

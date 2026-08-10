@@ -4,7 +4,7 @@ import { tipoToDb } from "../utils/serialize.js";
 
 export const migrationService = {
   async importLegacy(data: any) {
-    return prisma.$transaction(async tx => {
+    return prisma.$transaction(async (tx: any) => {
       for (const x of data.motoristas) await tx.motorista.upsert({ where: { id: x.id }, update: {}, create: { ...x, status: x.status ?? "ATIVO", createdAt: x.createdAt ? new Date(x.createdAt) : undefined } });
       for (const x of data.chapas) await tx.chapa.upsert({ where: { id: x.id }, update: {}, create: { ...x, createdAt: x.createdAt ? new Date(x.createdAt) : undefined } });
       for (const x of data.clientes) await tx.cliente.upsert({ where: { id: x.id }, update: {}, create: { ...x, createdAt: x.createdAt ? new Date(x.createdAt) : undefined } });
