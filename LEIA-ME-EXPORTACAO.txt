@@ -1,0 +1,19 @@
+PROJETO RADASA ATUALIZADO
+
+Incluido:
+- client
+- server
+- prisma
+- migrations
+- package.json
+- pnpm-lock.yaml
+- configuracoes e scripts
+
+Excluido:
+- node_modules
+- .git
+- dist e build
+- .env real
+- certificados e chaves
+- bancos locais
+- logs e temporarios

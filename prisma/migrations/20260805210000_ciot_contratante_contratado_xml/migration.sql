@@ -1,0 +1,20 @@
+-- CIOT: contratante da empresa certificada e contratado vindo do XML
+ALTER TABLE "ciots" ALTER COLUMN "clienteId" DROP NOT NULL;
+ALTER TABLE "ciots" ADD COLUMN "empresaId" TEXT;
+ALTER TABLE "ciots" ADD COLUMN "contratanteRazaoSocial" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratanteNomeFantasia" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratanteCnpj" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoRazaoSocial" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoNomeFantasia" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoCnpj" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoInscricaoEstadual" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoEndereco" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoCidade" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciots" ADD COLUMN "contratadoUf" TEXT NOT NULL DEFAULT '';
+CREATE INDEX "ciots_empresaId_idx" ON "ciots"("empresaId");
+ALTER TABLE "ciots" ADD CONSTRAINT "ciots_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ciot_ctes" ADD COLUMN "emitenteNomeFantasia" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciot_ctes" ADD COLUMN "emitenteInscricaoEstadual" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciot_ctes" ADD COLUMN "emitenteEndereco" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciot_ctes" ADD COLUMN "emitenteCidade" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "ciot_ctes" ADD COLUMN "emitenteUf" TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,190 @@
+[33mcommit 88d4651b90db50abdcd60a3c6039b440be43b930[m[33m ([m[1;36mHEAD[m[33m)[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 10:50:37 2026 -0400
+
+    Padroniza identificação de clientes e aprimora abastecimentos
+    
+    - padroniza exibição de clientes com Razão Social, Nome Fantasia e CPF/CNPJ
+    - melhora busca e seleção de clientes
+    - corrige identificação entre CPF e CNPJ
+    - aprimora visualização em Manifestos e Abastecimentos
+    - mantém pesquisa em tempo real nos cadastros
+    - corrige pequenos ajustes de interface e consistência
+
+[33mcommit dacc37a05c47641f132b91c7e34ea57e1e5b6e46[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 10:17:25 2026 -0400
+
+    Implementa melhorias em cadastros e abastecimentos
+
+[33mcommit 89e8c14261a4cd07cca30e087c056a875791c292[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 10:02:08 2026 -0400
+
+    Aprimora cadastros e importação inteligente de abastecimentos
+    
+    - reorganiza abas de Cadastros
+    - adiciona telefone, CPF, cidade e chave PIX às Chapas
+    - adiciona razão social e CNPJ aos Clientes
+    - corrige schema Prisma
+    - implementa leitura inteligente de XML e PDF
+    - melhora reconhecimento de odômetro (KM, HD, HO, OD)
+    - corrige leitura de decimais em XML
+    - adiciona suporte a XML nos abastecimentos
+    - corrige compatibilidade com Node 24 e pdf-parse
+
+[33mcommit bc8c067d3ac7c885e8552d482de2cda4a6e872c7[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 09:23:10 2026 -0400
+
+    Adiciona importação múltipla de XMLs aos abastecimentos
+
+[33mcommit 4ef15ac4c3a86c4539601f5fbe542f93f1005350[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 09:15:19 2026 -0400
+
+    Adiciona importação inteligente de notas de abastecimento por XML e PDF
+
+[33mcommit b1ff7594bcaee927b3a98641c9bcb5d0819e554b[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Tue Aug 4 08:13:20 2026 -0400
+
+    Adiciona sincronização de clientes por Excel
+
+[33mcommit e7e0ce3f9652f742c9feada02193dcbe1bd118e2[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 09:30:58 2026 -0400
+
+    Reativa categorias personalizadas no estoque
+
+[33mcommit d3379c1a5e5a18428f867d13abee57ad6356920f[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 09:16:02 2026 -0400
+
+    Organiza estoque e adiciona NF em PDF
+
+[33mcommit 81627995197cbb4faa3543900c269678a46f08cb[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 08:53:04 2026 -0400
+
+    Adiciona categorias personalizadas ao estoque
+
+[33mcommit a6300949bd4db5a4b1e86ef480945b27c92c9e2a[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 08:28:18 2026 -0400
+
+    Adiciona módulo de estoque
+
+[33mcommit a63fe4a8ebb3e316bf4dc2c04de6657fc14aea9f[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 07:56:04 2026 -0400
+
+    Corrige formatação de valores ausentes
+
+[33mcommit d64bc655cab5cb70f56a2bf9c00ac07b34dde2a4[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 07:47:01 2026 -0400
+
+    Adiciona mapa de chassi interativo ao módulo de pneus
+
+[33mcommit f7a99a967b33d93bd27d1e85ce8286976e9f5328[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 07:22:30 2026 -0400
+
+    Adiciona gestão relatórios alertas e permissões ao módulo de pneus
+
+[33mcommit 414d6a83c5d102fd741e7b4714440d0af2dba61e[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 06:42:00 2026 -0400
+
+    Corrige relações de pneus no schema Prisma
+
+[33mcommit 5d03699fb2ce24e97596312569d09e428ab3d2da[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 06:16:58 2026 -0400
+
+    Adiciona etapa inicial do módulo de pneus
+
+[33mcommit b562578a3669db0d9f1194be7b4788f968f608ce[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 05:58:11 2026 -0400
+
+    Adiciona múltiplos produtos e PDF aos abastecimentos
+
+[33mcommit ac0814d015b53a8fcbcb0d275df2b87cfe1cef8c[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 05:31:39 2026 -0400
+
+    Adiciona desconto e filtro por período nos abastecimentos
+
+[33mcommit 6e58c6996a1a454e0b7f86fe84c9515fc52e1afd[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 05:15:21 2026 -0400
+
+    Adiciona média de km por litro e renomeia odômetro
+
+[33mcommit c2cbfa1bac848214e05ce442b7a0398095ea06ca[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 05:06:01 2026 -0400
+
+    Adiciona filtros por coluna e ordena abastecimentos por hodômetro
+
+[33mcommit d02129b51598947cd887a1634d78657911b4befe[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 04:47:55 2026 -0400
+
+    Adiciona módulo de abastecimentos
+
+[33mcommit bbc7a71776c9dee3b2233865071e3b003185291d[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 04:47:50 2026 -0400
+
+    Corrige cálculo do total dos fechamentos
+
+[33mcommit ebd13d7aaba7798fc5e3a7bf7ed55fccd06012fb[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 04:15:10 2026 -0400
+
+    Exibe códigos ao lado de clientes e produtos
+
+[33mcommit fa3c0ac2f89ca727296c4ec8b2c16146a9519cbe[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 04:03:26 2026 -0400
+
+    Adiciona pesquisa de clientes nos manifestos
+
+[33mcommit 48b0a4ab1c496ae8cdcdec757518b2e040012d51[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 03:53:09 2026 -0400
+
+    Corrige cálculo do total dos fechamentos
+
+[33mcommit d2007541e3c3268356ada73f47095be6f39d9f55[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 03:45:22 2026 -0400
+
+    COMMIT CORREÇÃO V1.0.1
+
+[33mcommit 5cb0b3c2bf64223db2809f6f767be6ac11fae074[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 03:25:40 2026 -0400
+
+    COMMIT EDIT MOTORISTAS
+
+[33mcommit 627e42ac1a45e38bc351d6250bb22a15b09f7f43[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 02:27:40 2026 -0400
+
+    Adiciona projeto completo
+
+[33mcommit 2aef882ee2d765c07ac628543ea8b3a1df710384[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 02:15:16 2026 -0400
+
+    COMMIT PROJETO V1.0.0
+
+[33mcommit f167b3b0bc1f90e391dcb0dba021079646a80fe2[m
+Author: yago <156137481+hiagonear@users.noreply.github.com>
+Date:   Mon Aug 3 02:14:23 2026 -0400
+
+    first commit

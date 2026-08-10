@@ -1,0 +1,14 @@
+import { UserRole } from "@prisma/client";
+import { Router } from "express";
+import { usuariosController } from "../controllers/usuarios.controller";
+import { authenticate, requireRole } from "../middlewares/auth";
+import { validate } from "../middlewares/validate";
+import { createUserSchema, idParamsSchema } from "../validators/schemas";
+import { asyncHandler } from "../utils/async-handler";
+export const usuariosRoutes = Router();
+usuariosRoutes.use(authenticate, requireRole(UserRole.ADMIN));
+usuariosRoutes.get("/", asyncHandler(usuariosController.list));
+usuariosRoutes.get("/:id", validate(idParamsSchema), asyncHandler(usuariosController.get));
+usuariosRoutes.post("/", validate(createUserSchema), asyncHandler(usuariosController.create));
+usuariosRoutes.put("/:id", validate(idParamsSchema), asyncHandler(usuariosController.update));
+usuariosRoutes.delete("/:id", validate(idParamsSchema), asyncHandler(usuariosController.remove));

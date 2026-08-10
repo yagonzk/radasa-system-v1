@@ -1,0 +1,9 @@
+{
+  "apiUrl": "http://IP-DO-COMPUTADOR-RADASA:3001",
+  "token": "COLOQUE-A-MESMA-CHAVE-DO-SEFAZ_FOLDER_AGENT_TOKEN",
+  "cnpj": "15209274000162",
+  "folderPath": "C:\\SSAgro\\Server\\Bin\\Docs\\NFe\\Empresa",
+  "intervalSeconds": 30,
+  "stabilityMs": 1000,
+  "maxFileMb": 5
+}

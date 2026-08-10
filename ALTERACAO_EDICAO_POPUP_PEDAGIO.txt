@@ -1,0 +1,8 @@
+ALTERAÇÃO - EDIÇÃO PELO POP-UP DO PEDÁGIO
+
+- Adicionado botão com ícone de lápis no pop-up dos pedágios exibidos na rota.
+- Ao clicar no lápis, abre automaticamente a área "Editar Pedágios" preenchida com os dados da praça.
+- Para pedágios manuais já cadastrados, edita o cadastro existente.
+- Para pedágios vindos da base automática (ANTT/estadual), cria uma correção manual que passa a ter prioridade sobre a base automática.
+- O valor é armazenado como "Valor por eixo", seguindo a regra de cálculo atual do sistema.
+- Em rotas de ida e volta, a edição usa o valor de uma única passagem para não dobrar a tarifa cadastrada.

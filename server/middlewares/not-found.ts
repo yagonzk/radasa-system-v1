@@ -1,0 +1,5 @@
+import type { RequestHandler } from "express";
+
+export const notFound: RequestHandler = (req, res) => {
+  res.status(404).json({ message: `Rota não encontrada: ${req.method} ${req.originalUrl}` });
+};

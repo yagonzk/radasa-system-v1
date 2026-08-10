@@ -1,0 +1,1 @@
+ALTER TABLE "clientes" ADD COLUMN "razaoSocial" TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,110 @@
+{
+  "total_xmls": 192,
+  "placa_valida_encontrada": 178,
+  "placa_incompleta_conciliavel": 3,
+  "placa_ausente_ou_nao_identificavel": 11,
+  "hodometro_valido_encontrado": 165,
+  "hodometro_ausente_ou_placeholder": 27,
+  "principais_emitentes": [
+    {
+      "cnpj": "52501367000192",
+      "nome": "COMERCIO DE COMBUSTIVEIS MAE CAROLINA LTDA",
+      "quantidade": 53
+    },
+    {
+      "cnpj": "61677503000190",
+      "nome": "POSTO MACEDO ITAUBA",
+      "quantidade": 33
+    },
+    {
+      "cnpj": "11512642000196",
+      "nome": "ESTACAO AGUIA 163",
+      "quantidade": 21
+    },
+    {
+      "cnpj": "36381687000108",
+      "nome": "AUTO POSTO FIGUEIRA",
+      "quantidade": 11
+    },
+    {
+      "cnpj": "49676416000113",
+      "nome": "POSTO AMIGAO CASTELO DOS SONHOS",
+      "quantidade": 7
+    },
+    {
+      "cnpj": "36350167000120",
+      "nome": "POSTO MIMOSO",
+      "quantidade": 6
+    },
+    {
+      "cnpj": "05678551000122",
+      "nome": "NACIONAL GAS",
+      "quantidade": 4
+    },
+    {
+      "cnpj": "06341664000109",
+      "nome": "POSTO ALDO SORRISO LTDA",
+      "quantidade": 4
+    },
+    {
+      "cnpj": "09508324000100",
+      "nome": "POSTO GUARA",
+      "quantidade": 4
+    },
+    {
+      "cnpj": "37662141000180",
+      "nome": "POSTO VIENA",
+      "quantidade": 4
+    },
+    {
+      "cnpj": "41090635000104",
+      "nome": "POSTO SABIA",
+      "quantidade": 4
+    },
+    {
+      "cnpj": "12852447000178",
+      "nome": "POSTO TREVAO CACHOEIRA DA SERRA",
+      "quantidade": 3
+    },
+    {
+      "cnpj": "00345307000124",
+      "nome": "POSTO REDENTOR",
+      "quantidade": 3
+    },
+    {
+      "cnpj": "01048594000173",
+      "nome": "POSTO DE SERVICOS CASTANHEIRA",
+      "quantidade": 3
+    },
+    {
+      "cnpj": "34453861000147",
+      "nome": "POSTO PLANALTO",
+      "quantidade": 2
+    },
+    {
+      "cnpj": "12852447000259",
+      "nome": "POSTO TREVAO CACHOEIRA DA SERRA LTDA",
+      "quantidade": 2
+    },
+    {
+      "cnpj": "01369396000969",
+      "nome": "POSTO TIO HILARIO",
+      "quantidade": 2
+    },
+    {
+      "cnpj": "32988008000102",
+      "nome": "301 - POSTO 10 CELEIRO",
+      "quantidade": 2
+    },
+    {
+      "cnpj": "24969636000104",
+      "nome": "AUTO PECAS UNIAO MATRIZ",
+      "quantidade": 2
+    },
+    {
+      "cnpj": "31141819000283",
+      "nome": "POSTO RODOBRAS - MUTUM",
+      "quantidade": 2
+    }
+  ]
+}

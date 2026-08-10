@@ -1,0 +1,9 @@
+{
+  "apiUrl": "http://192.168.10.100:3001",
+  "token": "Radasa_SSAgro_2026_Sincronizacao_Automatica_Chave_Muito_Grande_8A91F2C7D5E4",
+  "cnpj": "15209274000162",
+  "folderPath": "C:\\SSAgro\\Server\\Bin\\Docs\\NFe\\Empresa",
+  "intervalSeconds": 30,
+  "stabilityMs": 1000,
+  "maxFileMb": 5
+}

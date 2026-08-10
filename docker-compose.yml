@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: radasa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: radasa
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - radasa_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d radasa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  radasa_postgres_data:
