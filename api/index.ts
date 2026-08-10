@@ -1,45 +1,94 @@
-import "dotenv/config";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { createApp, registerErrors } from "../server/app";
+import express, { type Express, type Request, type Response } from "express";
 
-/**
- * Vercel Function explícita para toda a API Express.
- *
- * O vercel.json reescreve /api/* para /api/index e encaminha o trecho
- * capturado como query string `path`. Antes de entregar a requisição ao
- * Express, restauramos a URL original para que todas as rotas existentes em
- * server/routes continuem funcionando sem alterações.
- */
-const app = createApp();
-registerErrors(app);
+let coreAppPromise: Promise<Express> | null = null;
 
-function restoreApiUrl(request: IncomingMessage) {
-  const rawUrl = request.url ?? "/api";
-  const parsed = new URL(rawUrl, "http://localhost");
+function requiredConfig() {
+  const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  const jwtSecret = String(process.env.JWT_SECRET ?? "");
 
-  // Em uma chamada direta para /api, a função já recebe a URL correta.
-  // Em /api/health, por exemplo, o rewrite interno chega como
-  // /api/index?path=health.
-  if (parsed.pathname !== "/api/index") return rawUrl;
+  const missing: string[] = [];
+  if (!databaseUrl) missing.push("DATABASE_URL");
+  if (jwtSecret.length < 32) missing.push("JWT_SECRET (mínimo 32 caracteres)");
 
-  const capturedPath = parsed.searchParams.get("path");
-  parsed.searchParams.delete("path");
+  return { missing };
+}
 
-  const normalizedPath = (capturedPath ?? "")
+function restoreOriginalApiUrl(request: Request) {
+  const parsed = new URL(request.url || "/api/index", "http://localhost");
+  const capturedPath = parsed.searchParams.get("__path");
+
+  if (capturedPath === null) return;
+
+  parsed.searchParams.delete("__path");
+
+  const normalizedPath = capturedPath
     .split("/")
     .map((part) => part.trim())
     .filter(Boolean)
     .join("/");
 
   const pathname = normalizedPath ? `/api/${normalizedPath}` : "/api";
-  const search = parsed.searchParams.toString();
-  return search ? `${pathname}?${search}` : pathname;
+  const query = parsed.searchParams.toString();
+  const restored = query ? `${pathname}?${query}` : pathname;
+
+  // Aqui já estamos dentro do adaptador Express oficial da Vercel, então
+  // req.url é o IncomingMessage mutável esperado pelo Express.
+  request.url = restored;
+  request.originalUrl = restored;
 }
 
-export default function handler(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  request.url = restoreApiUrl(request);
-  return app(request, response);
+async function loadCoreApp() {
+  if (!coreAppPromise) {
+    coreAppPromise = import("../server/app")
+      .then(({ createApp, registerErrors }) => {
+        const app = createApp();
+        registerErrors(app);
+        return app;
+      })
+      .catch((error) => {
+        coreAppPromise = null;
+        throw error;
+      });
+  }
+
+  return coreAppPromise;
 }
+
+const gateway = express();
+gateway.disable("x-powered-by");
+
+gateway.use(async (request: Request, response: Response) => {
+  restoreOriginalApiUrl(request);
+
+  const { missing } = requiredConfig();
+  if (missing.length > 0) {
+    response.status(503).setHeader("Cache-Control", "no-store").json({
+      status: "error",
+      code: "CONFIGURATION_ERROR",
+      message: "Variáveis obrigatórias não foram configuradas na Vercel.",
+      missing,
+    });
+    return;
+  }
+
+  try {
+    const app = await loadCoreApp();
+    app(request, response);
+  } catch (error) {
+    console.error("[vercel-api] Falha ao carregar o backend Express:", error);
+
+    if (!response.headersSent) {
+      response.status(500).setHeader("Cache-Control", "no-store").json({
+        status: "error",
+        code: "BACKEND_INIT_FAILED",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Falha desconhecida ao inicializar o backend.",
+      });
+    }
+  }
+});
+
+// A Vercel possui suporte oficial a aplicações Express exportadas como default.
+export default gateway;

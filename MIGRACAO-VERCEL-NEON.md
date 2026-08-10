@@ -1,16 +1,16 @@
-# Radasa — Vercel + Neon
+# Radasa — preparação para Vercel + Neon
 
-A migração de infraestrutura deste pacote está preparada para:
+A camada específica de Cloudflare Workers/Hyperdrive foi removida deste pacote.
 
-- frontend React/Vite servido pela Vercel;
-- backend Express executado por uma Vercel Function explícita em `api/index.ts`;
-- PostgreSQL existente no Neon via `DATABASE_URL`;
-- Prisma 6 usando a conexão do Neon;
-- rotas `/api/**` encaminhadas para a Function pelo `vercel.json`;
-- fallback SPA para `index.html`.
+Removido:
+- `worker/`
+- `wrangler.jsonc`
+- `worker-configuration.d.ts`
+- scripts `cf:*`, `dev:worker`, `build:worker` e `deploy` do Wrangler
+- dependência direta `wrangler`
+- workaround `iconv-lite` usado para o runtime Cloudflare
+- ramificações `RADASA_RUNTIME=cloudflare-workers` e Hyperdrive no Prisma
 
-A camada específica de Cloudflare Workers/Hyperdrive foi removida.
+O banco continua usando PostgreSQL via `DATABASE_URL`, portanto pode continuar no Neon.
 
-O banco não é recriado no deploy. Configure na Vercel a `DATABASE_URL` do banco Neon existente e as demais variáveis indicadas em `.env.vercel.example`.
-
-Consulte `DEPLOY-VERCEL-NEON.md` para o passo a passo de deploy e teste `/api/health` após a publicação.
+Próxima etapa: configurar a entrada HTTP/API e as rotas para o deploy na Vercel, além das variáveis de ambiente do projeto.

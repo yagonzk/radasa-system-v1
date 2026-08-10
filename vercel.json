@@ -3,8 +3,12 @@
   "buildCommand": "pnpm run vercel-build",
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "/api/_health"
+    },
+    {
       "source": "/api/:path*",
-      "destination": "/api/index"
+      "destination": "/api/index?__path=:path*"
     },
     {
       "source": "/(.*)",
