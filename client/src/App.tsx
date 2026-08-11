@@ -7,11 +7,9 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import Cadastros from "./pages/Cadastros";
-import Viagens from "./pages/Viagens";
 import Pedagios from "./pages/Pedagios";
 import Fechamentos from "./pages/Fechamentos";
 import Romaneios from "./pages/Romaneios";
-import OCR from "./pages/OCR";
 import Auth from "./pages/Auth";
 import ChangePassword from "./pages/ChangePassword";
 import Perfil from "./pages/Perfil";
@@ -30,11 +28,9 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/cadastros" component={Cadastros} />
       <Route path="/cadastros/:tab" component={Cadastros} />
-      <Route path="/viagens" component={Viagens} />
       <Route path="/pedagios" component={Pedagios} />
       <Route path="/romaneios" component={Romaneios} />
       <Route path="/manifestos" component={Romaneios} />
-      <Route path="/ocr" component={OCR} />
       <Route path="/fechamentos" component={Fechamentos} />
       <Route path="/abastecimentos" component={Abastecimentos} />
       <Route path="/ciot/gerar" component={CiotGerar} />
