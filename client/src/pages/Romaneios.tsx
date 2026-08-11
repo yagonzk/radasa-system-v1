@@ -33,7 +33,7 @@ import {
   shouldTryOcrFallback,
 } from "@/lib/romaneioImportQuality";
 
-const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.05";
+const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.06";
 import { formatBRL, formatDate } from "@/lib/exportUtils";
 import {
   Check,
@@ -438,14 +438,18 @@ export default function Romaneios() {
   };
 
   const bindImportedVehicle = (result: PdfResponse, sourceVehicles: Veiculo[] = veiculos) => {
-    const importedPlate = result.documento.placaVeiculo;
+    // Segunda barreira de segurança no frontend: o total exibido na revisão e
+    // na importação em massa é recalculado a partir dos itens. Nunca confiamos
+    // cegamente no número lido do RESUMO do PDF/OCR.
+    const normalizedResult = refreshReviewDocument(result);
+    const importedPlate = normalizedResult.documento.placaVeiculo;
     const registered = findRegisteredVehicleByPlate(importedPlate, sourceVehicles);
 
     return {
       result: {
-        ...result,
+        ...normalizedResult,
         documento: {
-          ...result.documento,
+          ...normalizedResult.documento,
           // Placa importada só é mantida quando existe no cadastro de veículos.
           placaVeiculo: registered ? formatPlate(registered.placa) : "",
           modeloVeiculo: registered?.modelo ?? "",

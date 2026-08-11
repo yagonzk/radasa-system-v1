@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const ROMANEIO_PARSER_VERSION = "2026.08.11.05";
+export const ROMANEIO_PARSER_VERSION = "2026.08.11.06";
 
 export type TipoRomaneioPdf =
   | "Bonificação - Lebrinha"
@@ -1651,13 +1651,24 @@ export function interpretarTextoManifestoPdf(
     avisos.push(`${recoveredItems} item(ns) recuperado(s) pela leitura alternativa do PDF.`);
   }
 
-  const calculatedTotal = produtos.reduce((sum, produto) => sum + produto.valorTotal, 0);
+  // O valor total do documento deve ser SEMPRE derivado dos itens que passaram
+  // pela validação do parser. O OCR do RESUMO é apenas uma contraprova.
+  //
+  // Motivo: em PDFs SIGA com fonte pequena o Tesseract pode transformar
+  // "4.935,00" em "49.350,00" (ou outra ordem de grandeza). A implementação
+  // anterior aceitava qualquer TOTAL positivo do RESUMO como autoritativo e
+  // substituía a soma correta dos itens, fazendo a importação em massa exibir
+  // dezenas/centenas de milhares de reais mesmo com as linhas individuais
+  // corretas.
+  const calculatedTotal = Math.round(
+    produtos.reduce((sum, produto) => sum + produto.valorTotal, 0) * 100,
+  ) / 100;
   const printedSummaryTotal = parsePrintedSummaryTotal(text);
   if (printedSummaryTotal > 0) {
-    const totalTolerance = Math.max(0.08, printedSummaryTotal * 0.0025);
-    if (Math.abs(calculatedTotal - printedSummaryTotal) > totalTolerance) {
+    const totalTolerance = Math.max(0.08, Math.abs(calculatedTotal) * 0.003);
+    if (calculatedTotal > 0 && Math.abs(calculatedTotal - printedSummaryTotal) > totalTolerance) {
       avisos.push(
-        `Soma dos itens (${calculatedTotal.toFixed(2)}) diverge do total impresso (${printedSummaryTotal.toFixed(2)}).`,
+        `Total impresso pelo OCR (${printedSummaryTotal.toFixed(2)}) foi ignorado porque diverge da soma validada dos itens (${calculatedTotal.toFixed(2)}).`,
       );
     }
   }
@@ -1681,7 +1692,7 @@ export function interpretarTextoManifestoPdf(
     produtos,
     romaneios: Array.from(new Set(produtos.map((produto) => produto.romaneio))),
     notasFiscais: Array.from(new Set(produtos.map((produto) => `${produto.notaFiscal}/${produto.serie}`))),
-    valorTotal: printedSummaryTotal || calculatedTotal,
+    valorTotal: calculatedTotal > 0 ? calculatedTotal : printedSummaryTotal,
     avisos,
   };
 }

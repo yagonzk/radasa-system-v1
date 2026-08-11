@@ -97,7 +97,36 @@ CLIENTE : 094020/01-MANGO GAS COLNIZA
 175648 07/08/26 01 00308-GARRAFAO 20 LT 28,00 9,72 272,16 Bonificacao- Acertar c/Lebrinha 060800/004
 `;
 
+
+const FRETE3_TOTAL_RESUMO_OCR_CORROMPIDO = `
+SIGA /FATRU41/v.12 ROMANEIO DE FRETE DT.Ref.: 05/08/2026
+Emissão: 05/08/2026
+TRANSPORTADORA : 001103-D BARBIERO E CI Cod Veiculo : 00002092 PLACA VEICULO : RAQ5F96 - IVECO/TECTOR 310E30C Periodo: Todos
+CLIENTE : 001833/01-DISTRIBUIDORA TONINHO
+175513 05/08/26 01 00308-GARRAFAO 20 LT 653,00 5,40 3.526,20 Receber c/ Cliente 060628/004
+CLIENTE : 001237/01-STARGAS
+175513 05/08/26 01 00308-GARRAFAO 20 LT 146,00 4,46 651,16 Incluso NF - Acertar c/Lebrinha 060630/004
+CLIENTE : 001833/01-DISTRIBUIDORA TONINHO
+175513 05/08/26 03 00312-COPO 200ML C/4 60,00 2,16 129,60 Receber c/ Cliente 060631/004
+175513 05/08/26 02 00316-GAS 500ML C/12 30,00 1,08 32,40 Receber c/ Cliente 060631/004
+175513 05/08/26 01 00317-497ML C/12 50,00 1,08 54,00 Receber c/ Cliente 060631/004
+CLIENTE : 001833/01-DISTRIBUIDORA TONINHO
+175513 05/08/26 01 00308-GARRAFAO 20 LT 97,00 5,40 523,80 Bonificacao- Acertar c/Lebrinha 060632/004
+CLIENTE : 001237/01-STARGAS
+175513 05/08/26 01 00308-GARRAFAO 20 LT 4,00 4,46 17,84 Bonificacao- Acertar c/Lebrinha 060633/004
+RESUMO
+Total ........................................................ 49.350,00
+`;
+
 describe("interpretarTextoManifestoPdf com OCR", () => {
+
+  it("ignora total absurdo do RESUMO quando a soma validada dos itens fecha", () => {
+    const result = interpretarTextoManifestoPdf(FRETE3_TOTAL_RESUMO_OCR_CORROMPIDO);
+
+    expect(result.produtos).toHaveLength(7);
+    expect(result.valorTotal).toBeCloseTo(4935, 2);
+    expect(result.avisos.some((aviso) => aviso.includes("foi ignorado"))).toBe(true);
+  });
 
   it("recupera linhas quando o PDF.js entrega cada caractere separado por espaços", () => {
     const base = `
