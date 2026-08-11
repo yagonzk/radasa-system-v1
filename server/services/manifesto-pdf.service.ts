@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const ROMANEIO_PARSER_VERSION = "2026.08.11.03";
+export const ROMANEIO_PARSER_VERSION = "2026.08.11.05";
 
 export type TipoRomaneioPdf =
   | "Bonificação - Lebrinha"
@@ -658,6 +658,44 @@ function repairOcrRomaneioNumbers(produtos: RomaneioPdfProduto[]) {
   }
 }
 
+function repairOcrProductCodesByFamily(items: RomaneioPdfProduto[]) {
+  const byFamily = new Map<string, RomaneioPdfProduto[]>();
+  for (const item of items) {
+    const family = hybridProductFamily(item.descricao);
+    if (!family) continue;
+    const group = byFamily.get(family) ?? [];
+    group.push(item);
+    byFamily.set(family, group);
+  }
+
+  for (const group of byFamily.values()) {
+    if (group.length < 2) continue;
+    const counts = new Map<string, number>();
+    for (const item of group) {
+      const code = repairOcrNumericToken(item.codigo).replace(/\D/g, "");
+      if (code.length < 4 || code.length > 8) continue;
+      counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+
+    const ranked = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].length - b[0].length);
+    const [trustedCode, trustedCount] = ranked[0] ?? [];
+    if (!trustedCode || !trustedCount || trustedCount < 2) continue;
+
+    for (const item of group) {
+      const current = repairOcrNumericToken(item.codigo).replace(/\D/g, "");
+      if (!current) continue;
+      if (
+        current === trustedCode ||
+        current.endsWith(trustedCode) ||
+        trustedCode.endsWith(current) ||
+        digitEditDistance(current, trustedCode) <= 1
+      ) {
+        item.codigo = trustedCode;
+      }
+    }
+  }
+}
+
 function hasEmbeddedRecordBoundary(value: string) {
   const normalized = normalizeOcrDigits(value);
   return (
@@ -944,6 +982,7 @@ type LooseOcrProduct = {
   codigo: string;
   descricao: string;
   quantidade: number;
+  valorUnitario: number | null;
   valorTotal: number | null;
   instrucaoCobranca: string;
   notaFiscal: string;
@@ -1043,7 +1082,14 @@ function parseLooseOcrClient(line: string): RomaneioPdfCliente | null {
     const left = repairOcrNumericToken(codeCandidate[1]).replace(/\D/g, "");
     const right = repairOcrNumericToken(codeCandidate[2]).replace(/\D/g, "");
     if (left.length >= 4 && right.length >= 1) {
-      codigo = `${left}/${right.padStart(2, "0").slice(-2)}`;
+      // Nos romaneios SIGA deste cadastro, o código do cliente ocupa 6 dígitos
+      // antes da barra. OCR às vezes cola ruído da coluna ao lado
+      // ("09367929/01"). Mantemos os 6 primeiros quando houver sobra.
+      const normalizedLeft = left.length > 6 ? left.slice(0, 6) : left;
+      // O sufixo da filial possui 2 dígitos. Se o OCR anexar um caractere
+      // espúrio (ex.: "01i" -> "011"), os DOIS PRIMEIROS dígitos são os que
+      // correspondem à posição impressa no relatório.
+      codigo = `${normalizedLeft}/${right.padEnd(2, "0").slice(0, 2)}`;
     }
   }
 
@@ -1084,11 +1130,36 @@ function parseLooseOcrProductLine(
   if (!(quantidade > 0) || quantidade > 100000) return null;
 
   const afterQuantity = remainder.slice(quantityMatch.index + quantityMatch[0].length);
+  // Depois da quantidade, as duas próximas colunas monetárias do SIGA são
+  // sempre Prc.Unit e Tot.Frete. A implementação anterior usava o MAIOR
+  // número encontrado depois da quantidade; isso podia promover um valor
+  // incorreto do texto digital/OCR a total e gerar somas absurdas (ex. R$ 233 mil).
+  // Preservamos a ordem física das colunas e validamos pela multiplicação.
   const numericCandidates = Array.from(
     afterQuantity.matchAll(/[0-9OQILDSBGTZ.]+\s*,\s*[0-9OQILDSBGTZ]{1,3}/gi),
     (match) => parseOcrBrazilianNumber(match[0]),
   ).filter((value) => Number.isFinite(value) && value >= 0);
-  const valorTotal = numericCandidates.length ? Math.max(...numericCandidates) : null;
+  let valorUnitario: number | null = numericCandidates[0] ?? null;
+  let valorTotal: number | null = numericCandidates[1] ?? null;
+
+  // Alguns OCRs perdem a vírgula do unitário, mas preservam o total. Se houver
+  // apenas um valor monetário, tratamos esse valor como total e só inferimos o
+  // unitário quando Qtde × Unitário fecha em centavos.
+  if (numericCandidates.length === 1) {
+    valorTotal = numericCandidates[0];
+    valorUnitario = null;
+  }
+
+  if (valorUnitario != null && valorTotal != null && quantidade > 0) {
+    const expected = quantidade * valorUnitario;
+    const tolerance = Math.max(0.08, Math.abs(valorTotal) * 0.0025);
+    if (Math.abs(expected - valorTotal) > tolerance) {
+      const inferredUnit = Math.round((valorTotal / quantidade) * 100) / 100;
+      if (Math.abs(quantidade * inferredUnit - valorTotal) <= tolerance) {
+        valorUnitario = inferredUnit;
+      }
+    }
+  }
 
   let notaFiscal = "";
   let serie = "";
@@ -1116,6 +1187,7 @@ function parseLooseOcrProductLine(
     codigo: prefix[4].replace(/[^A-Z0-9]/gi, "").toUpperCase(),
     descricao,
     quantidade,
+    valorUnitario,
     valorTotal,
     instrucaoCobranca,
     notaFiscal,
@@ -1156,7 +1228,7 @@ function parseDigitalSupportRows(text: string): HybridSupportRow[] {
   const lines = text.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
 
   for (const rawLine of lines) {
-    let line = rawLine
+    const line = rawLine
       // PDF.js às vezes representa 7.157,60 como "7,157, 60".
       .replace(/(\d{1,3}),(\d{3}),\s*(\d{2})/g, "$1.$2,$3")
       .replace(/(\d)\s*,\s*(\d{2})/g, "$1,$2");
@@ -1165,21 +1237,56 @@ function parseDigitalSupportRows(text: string): HybridSupportRow[] {
     if (!nfMatch || nfMatch.index == null) continue;
 
     const beforeNf = line.slice(0, nfMatch.index);
-    const numberMatches = Array.from(
-      beforeNf.matchAll(/(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,6})/g),
-      (match) => parseBrazilianNumber(match[0]),
-    ).filter((value) => Number.isFinite(value) && value >= 0);
-    if (!numberMatches.length) continue;
+    const decimalMatches = Array.from(
+      beforeNf.matchAll(/(?:\d{1,3}(?:\.\d{3})*|\d+)\s*,\s*\d{2}/g),
+    );
+    if (!decimalMatches.length) continue;
 
-    const quantidade = numberMatches[0];
+    let quantidade = 0;
     let valorUnitario: number | null = null;
     let valorTotal: number | null = null;
-    if (numberMatches.length >= 3) {
-      valorUnitario = numberMatches[1];
-      valorTotal = numberMatches[2];
-    } else if (numberMatches.length >= 2) {
-      valorTotal = numberMatches[1];
+
+    if (decimalMatches.length >= 3) {
+      // As TRÊS ÚLTIMAS colunas decimais antes da cobrança/NF são
+      // Qtde / Prc.Unit / Tot.Frete. Não usamos o primeiro número da linha,
+      // pois ele pode ser o próprio romaneio (175513), data, item ou código.
+      const [q, u, t] = decimalMatches.slice(-3);
+      quantidade = parseBrazilianNumber(q[0]);
+      valorUnitario = parseBrazilianNumber(u[0]);
+      valorTotal = parseBrazilianNumber(t[0]);
+    } else if (decimalMatches.length === 2) {
+      const [first, second] = decimalMatches;
+      const firstValue = parseBrazilianNumber(first[0]);
+      const secondValue = parseBrazilianNumber(second[0]);
+      const prefix = beforeNf.slice(0, first.index ?? 0).trim();
+      const integerBefore = prefix.match(/(?:^|\s)(\d{1,6})\s*$/);
+      const integerQuantity = integerBefore ? Number(integerBefore[1]) : 0;
+
+      // Ex.: "920 7,78 7.157,60" -> 920 / 7,78 / 7.157,60.
+      // Só aceitamos essa reconstrução quando a multiplicação fecha.
+      if (integerQuantity > 0) {
+        const tolerance = Math.max(0.08, Math.abs(secondValue) * 0.0025);
+        if (Math.abs(integerQuantity * firstValue - secondValue) <= tolerance) {
+          quantidade = integerQuantity;
+          valorUnitario = firstValue;
+          valorTotal = secondValue;
+        }
+      }
+
+      // Ex.: "80,00 622,40" quando o PDF perdeu visualmente a coluna do
+      // unitário. Mantemos quantidade/total e deixamos o unitário nulo; o OCR
+      // visual é quem deve fornecer o preço, sem inventar valor pelo texto.
+      if (!(quantidade > 0)) {
+        quantidade = firstValue;
+        valorTotal = secondValue;
+      }
+    } else {
+      // Uma única coluna decimal não é suficiente para reconstruir com
+      // segurança quantidade/preço/total. Ignoramos essa linha de apoio.
+      continue;
     }
+
+    if (!(quantidade > 0) || quantidade > 100000) continue;
 
     const nfRaw = nfMatch[1];
     const nfDigitsRaw = repairOcrNumericToken(nfRaw).replace(/\D/g, "");
@@ -1202,28 +1309,64 @@ function parseDigitalSupportRows(text: string): HybridSupportRow[] {
   return rows;
 }
 
-function repairSequentialInvoiceNumbers(items: RomaneioPdfProduto[]) {
-  const known = items
-    .map((item, index) => ({ index, value: /^\d{6}$/.test(item.notaFiscal) ? Number(item.notaFiscal) : NaN }))
-    .filter((entry) => Number.isFinite(entry.value));
+function supportArithmeticIsValid(row: HybridSupportRow) {
+  if (!(row.quantidade > 0)) return false;
+  if (row.valorUnitario == null || row.valorTotal == null) return false;
+  const tolerance = Math.max(0.08, Math.abs(row.valorTotal) * 0.0025);
+  return Math.abs(row.quantidade * row.valorUnitario - row.valorTotal) <= tolerance;
+}
 
-  let base: number | null = null;
-  for (let i = 0; i < known.length - 1; i += 1) {
-    const left = known[i];
-    const right = known[i + 1];
-    if (right.index === left.index + 1 && right.value === left.value + 1) {
-      base = left.value - left.index;
-      break;
+function findSupportForOcrProduct(product: LooseOcrProduct, rows: HybridSupportRow[]) {
+  let best: { row: HybridSupportRow; score: number } | null = null;
+  for (const row of rows) {
+    let score = 0;
+    const quantityMatches = Math.abs(row.quantidade - product.quantidade) <= 0.01;
+    if (quantityMatches) score += 6;
+
+    // Só usamos divergência monetária como evidência negativa quando a própria
+    // linha digital fecha Qtde × Unitário = Total. Linhas digitais incompletas
+    // (por exemplo 146,00 4,46 sem o total 651,16) continuam úteis para NF/série.
+    const arithmeticValid = supportArithmeticIsValid(row);
+    if (product.valorTotal != null && row.valorTotal != null && arithmeticValid) {
+      const tolerance = Math.max(0.08, Math.abs(product.valorTotal) * 0.003);
+      if (Math.abs(row.valorTotal - product.valorTotal) <= tolerance) score += 5;
+      else if (quantityMatches && product.valorTotal > 0 && row.valorTotal > 0) score -= 5;
     }
-  }
-  if (base == null) return;
 
-  for (let index = 0; index < items.length; index += 1) {
+    if (product.notaFiscal && row.notaFiscal && product.notaFiscal === row.notaFiscal) score += 5;
+    if (product.serie && row.serie && product.serie === row.serie) score += 1;
+    if (arithmeticValid) score += 2;
+
+    // Nunca pareamos apenas por posição quando a quantidade de linhas difere.
+    // Uma linha digital pode sumir e deslocar todas as seguintes.
+    if (score < 6) continue;
+    if (!best || score > best.score) best = { row, score };
+  }
+  return best?.row ?? null;
+}
+
+function repairSequentialInvoiceNumbers(items: RomaneioPdfProduto[]) {
+  // Só inferimos sequência quando AS DUAS PRIMEIRAS linhas já comprovam uma
+  // progressão +1. Procurar um par consecutivo em qualquer ponto do documento
+  // é perigoso porque a mesma NF pode aparecer em vários produtos/clientes.
+  if (items.length < 3) return;
+  const first = items[0]?.notaFiscal ?? "";
+  const second = items[1]?.notaFiscal ?? "";
+  if (!/^\d{6}$/.test(first) || !/^\d{6}$/.test(second)) return;
+  const firstNumber = Number(first);
+  const secondNumber = Number(second);
+  if (secondNumber !== firstNumber + 1) return;
+
+  const base = firstNumber;
+  for (let index = 2; index < items.length; index += 1) {
     const expected = base + index;
     const current = items[index].notaFiscal;
-    if (!/^\d{6}$/.test(current)) {
-      items[index].notaFiscal = String(expected).padStart(6, "0");
+    if (/^\d{6}$/.test(current)) {
+      // Se a sequência impressa deixa de ser compatível, paramos de inferir.
+      if (Number(current) !== expected) break;
+      continue;
     }
+    items[index].notaFiscal = String(expected).padStart(6, "0");
   }
 }
 
@@ -1237,66 +1380,99 @@ function parseHybridSigaDocument(rawText: string) {
     return { clientes: loose.clientes, produtos: [] as RomaneioPdfProduto[] };
   }
 
-  // Preços unitários confiáveis vindos da camada digital. O relatório pode
-  // rasterizar uma coluna em uma linha e mantê-la digital na linha seguinte;
-  // agrupamos por família de produto para aproveitar a leitura boa.
-  const trustedUnitByFamily = new Map<string, number>();
-  for (let index = 0; index < loose.produtos.length; index += 1) {
-    const product = loose.produtos[index];
-    const support = supportRows[index];
-    if (!support || !(support.valorUnitario && support.valorUnitario > 0) || !(support.valorTotal && support.valorTotal > 0)) {
-      continue;
-    }
-    const quantity = support.quantidade > 0 ? support.quantidade : product.quantidade;
-    if (Math.abs(quantity * support.valorUnitario - support.valorTotal) <= 0.08) {
-      trustedUnitByFamily.set(hybridProductFamily(product.descricao), support.valorUnitario);
-    }
-  }
+  const supportsArePositionallyAligned = supportRows.length === loose.produtos.length;
 
   const produtos: RomaneioPdfProduto[] = loose.produtos.map((product, index) => {
-    const support = supportRows[index];
-    let quantidade = support?.quantidade && support.quantidade > 0
-      ? support.quantidade
-      : product.quantidade;
+    // Posição só é considerada quando as duas fontes possuem exatamente a
+    // mesma quantidade de linhas. Caso contrário, usamos apenas pareamento por
+    // conteúdo (quantidade/NF/série/aritmética).
+    const positionalSupport = supportsArePositionallyAligned ? supportRows[index] : null;
+    const matchedSupport = findSupportForOcrProduct(product, supportRows);
+    const support = positionalSupport ?? matchedSupport;
+    let quantidade = product.quantidade;
     const ehVasilhame = isVasilhameDescription(product.descricao);
-    const family = hybridProductFamily(product.descricao);
-    const trustedUnit = trustedUnitByFamily.get(family) ?? null;
 
-    const totalCandidates = [product.valorTotal, support?.valorTotal]
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
-
-    let valorTotal = 0;
     let valorUnitario = 0;
+    let valorTotal = 0;
+
     if (!ehVasilhame) {
-      if (trustedUnit && quantidade > 0) {
-        const expected = quantidade * trustedUnit;
-        const closest = [...totalCandidates].sort(
-          (a, b) => Math.abs(a - expected) - Math.abs(b - expected),
-        )[0];
-        valorTotal = closest != null && Math.abs(closest - expected) <= Math.max(0.12, expected * 0.08)
-          ? closest
-          : Math.round(expected * 100) / 100;
-        valorUnitario = trustedUnit;
-      } else {
-        // OCR do total é muito mais estável que OCR do preço unitário nesse
-        // formulário. Usamos o maior candidato monetário e recalculamos o
-        // unitário pela própria relação Qtde × Unitário = Total.
-        valorTotal = totalCandidates.length ? Math.max(...totalCandidates) : 0;
-        if (quantidade > 0 && valorTotal > 0) {
-          valorUnitario = Math.round((valorTotal / quantidade) * 100) / 100;
-        } else if (support?.valorUnitario && support.valorUnitario > 0) {
-          valorUnitario = support.valorUnitario;
+      const ocrUnit = product.valorUnitario;
+      const ocrTotal = product.valorTotal;
+
+      // Em alguns PDFs o OCR troca 80,00 por 20,00 e, ao mesmo tempo, lê o
+      // unitário como 31,12; a multiplicação continua fechando e parece válida.
+      // Quando a camada digital está perfeitamente alinhada por linha, sua
+      // quantidade é usada como contraprova e o total do OCR, que costuma ser
+      // mais estável, reconstrói o preço unitário correto.
+      if (
+        positionalSupport &&
+        positionalSupport.quantidade > 0 &&
+        Math.abs(positionalSupport.quantidade - quantidade) > 0.01 &&
+        ocrTotal != null && ocrTotal > 0
+      ) {
+        const inferredUnitFromDigitalQuantity = Math.round((ocrTotal / positionalSupport.quantidade) * 100) / 100;
+        const tolerance = Math.max(0.08, Math.abs(ocrTotal) * 0.0025);
+        if (
+          inferredUnitFromDigitalQuantity > 0 &&
+          Math.abs(positionalSupport.quantidade * inferredUnitFromDigitalQuantity - ocrTotal) <= tolerance
+        ) {
+          quantidade = positionalSupport.quantidade;
         }
+      }
+
+      if (ocrUnit != null && ocrTotal != null && quantidade > 0) {
+        const tolerance = Math.max(0.08, Math.abs(ocrTotal) * 0.0025);
+        if (Math.abs(quantidade * ocrUnit - ocrTotal) <= tolerance) {
+          // Melhor cenário: as três colunas do OCR fecham matematicamente.
+          valorUnitario = ocrUnit;
+          valorTotal = ocrTotal;
+        } else {
+          // Quando apenas um dígito do unitário foi corrompido, o total/qtde
+          // costuma reconstruir exatamente um preço de 2 casas decimais.
+          const inferredUnit = Math.round((ocrTotal / quantidade) * 100) / 100;
+          if (Math.abs(quantidade * inferredUnit - ocrTotal) <= tolerance) {
+            valorUnitario = inferredUnit;
+            valorTotal = ocrTotal;
+          }
+        }
+      } else if (ocrTotal != null && quantidade > 0) {
+        const inferredUnit = Math.round((ocrTotal / quantidade) * 100) / 100;
+        const tolerance = Math.max(0.08, Math.abs(ocrTotal) * 0.0025);
+        if (inferredUnit > 0 && Math.abs(quantidade * inferredUnit - ocrTotal) <= tolerance) {
+          valorUnitario = inferredUnit;
+          valorTotal = ocrTotal;
+        }
+      } else if (ocrUnit != null && ocrUnit > 0 && quantidade > 0) {
+        valorUnitario = ocrUnit;
+        valorTotal = Math.round(quantidade * ocrUnit * 100) / 100;
+      }
+
+      // A camada digital é SOMENTE fallback. Ela nunca substitui uma leitura
+      // OCR que já fecha Qtde × Unitário = Total. E só entra quando foi
+      // pareada por quantidade/NF/total, nunca pelo índice da linha.
+      if (!(valorTotal > 0) && support && supportArithmeticIsValid(support)) {
+        valorUnitario = support.valorUnitario ?? 0;
+        valorTotal = support.valorTotal ?? 0;
       }
     }
 
-    let notaFiscal = "";
-    let serie = support?.serie || product.serie || "";
-    const nfCandidates = [support?.notaFiscal, product.notaFiscal].filter(Boolean) as string[];
-    notaFiscal = nfCandidates.find((value) => /^\d{6,9}$/.test(value)) ?? nfCandidates[0] ?? "";
+    let notaFiscal = product.notaFiscal;
+    let serie = product.serie;
+    // NF/serie do OCR são preservadas quando já são numéricas e completas.
+    // A camada digital só corrige campo AUSENTE/corrompido; nunca troca uma NF
+    // válida apenas porque outra linha tem a mesma quantidade.
+    if (support) {
+      if (!/^\d{6,9}$/.test(notaFiscal) && support.notaFiscal) notaFiscal = support.notaFiscal;
+      if (!/^\d{3,4}$/.test(serie) && support.serie) serie = support.serie;
+    }
     if (notaFiscal.length === 5) notaFiscal = notaFiscal.padStart(6, "0");
 
-    const instructionSource = support?.instrucaoCobranca && normalize(support.instrucaoCobranca).length > 2
+    const productInstructionNormalized = normalize(product.instrucaoCobranca);
+    const productInstructionIsKnown =
+      productInstructionNormalized.includes("RECEBERCCLIENTE") ||
+      productInstructionNormalized.includes("LEBRINHA") ||
+      productInstructionNormalized.includes("BONIFICACAO");
+    const instructionSource = !productInstructionIsKnown && support?.instrucaoCobranca
       ? support.instrucaoCobranca
       : product.instrucaoCobranca;
     const instrucaoCobranca = humanizeLooseInstruction(instructionSource, valorTotal);
@@ -1427,7 +1603,11 @@ export function interpretarTextoManifestoPdf(
   // quantidade/total/NF na camada textual. Nessa situação juntamos as duas
   // fontes em vez de exigir que uma única extração esteja perfeita.
   const hybridParsed = parseHybridSigaDocument(rawText);
-  if (hybridParsed.produtos.length >= produtos.length && hybridParsed.produtos.length > 0) {
+  // Quando o cliente envia as duas fontes marcadas (digital + OCR), o parser
+  // híbrido já fez o pareamento e a validação aritmética. Misturar novamente
+  // esses itens com o parser genérico reintroduzia duplicatas e linhas
+  // corrompidas da camada digital. Portanto o híbrido é a fonte autoritativa.
+  if (hybridParsed.produtos.length > 0) {
     clientes.splice(0, clientes.length);
     for (const client of hybridParsed.clientes) {
       if (!clientes.some((item) =>
@@ -1445,6 +1625,7 @@ export function interpretarTextoManifestoPdf(
   // aparece corretamente em outras linhas do documento (ex.: 275190/2175190
   // -> 175190). Isso é especialmente útil no OCR de páginas digitalizadas.
   repairOcrRomaneioNumbers(produtos);
+  repairOcrProductCodesByFamily(produtos);
 
   // Corrige romaneio com primeiro dígito perdido pelo OCR quando existe no mesmo
   // documento uma versão mais longa e inequívoca com o mesmo sufixo (ex.: 75646 -> 175646).

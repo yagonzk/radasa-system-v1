@@ -34,7 +34,7 @@ const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 600 / 72;
 const OCR_MAX_PIXELS = 11_000_000;
 const BULK_OCR_MAX_PIXELS = 11_000_000;
 const HIGH_ACCURACY_OCR_MAX_PIXELS = 14_000_000;
-const BULK_OCR_WORKERS = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 8) / 2)));
+const BULK_OCR_WORKERS = Math.max(1, Math.min(2, Math.floor((navigator.hardwareConcurrency || 8) / 2)));
 
 const DIGITAL_TEXT_MARKER = "[[RADASA_DIGITAL_TEXT]]";
 const OCR_TEXT_MARKER = "[[RADASA_OCR_TEXT]]";
@@ -413,7 +413,10 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
         page,
         options.bulk === true,
         highAccuracy,
-        isSiga ? 0.40 : 1,
+        // 40% cortava as últimas linhas de romaneios mais cheios (como o
+        // FRETE 3). 65% ainda permite OCR em alta resolução dentro do limite
+        // de pixels e inclui todos os itens impressos antes do RESUMO.
+        isSiga ? 0.65 : 1,
       );
       let recognized: any;
       if (options.bulk) {

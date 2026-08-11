@@ -47,11 +47,29 @@ function compactForStructure(value: string) {
 }
 
 export function countLikelyProductRows(text: string) {
-  const compact = compactForStructure(text);
-  // Estrutura observada no SIGA/FATRU41: romaneio (6 dígitos), data,
-  // item (2 posições), código do produto e hífen que inicia a descrição.
-  const matches = compact.match(/\d{6}\d{2}\/\d{2}\/\d{2}[0-9OQIL]{2}\d{4,10}-/g);
-  return matches?.length ?? 0;
+  const countOneSource = (value: string) => {
+    const compact = compactForStructure(value);
+    // Estrutura observada no SIGA/FATRU41: romaneio (6 dígitos), data,
+    // item (2 posições), código do produto e hífen que inicia a descrição.
+    const matches = compact.match(/\d{6}\d{2}\/\d{2}\/\d{2}[0-9OQIL]{2}\d{4,10}-/g);
+    return matches?.length ?? 0;
+  };
+
+  // No texto híbrido há uma cópia DIGITAL e uma cópia OCR da mesma página.
+  // Somar as duas fazia a checagem acreditar que metade dos itens estava
+  // faltando. A quantidade esperada é o MAIOR número de linhas encontrado em
+  // uma das fontes, não a soma das duas.
+  const digitalMarker = "[[RADASA_DIGITAL_TEXT]]";
+  const ocrMarker = "[[RADASA_OCR_TEXT]]";
+  if (text.includes(digitalMarker) && text.includes(ocrMarker)) {
+    const digitalStart = text.indexOf(digitalMarker) + digitalMarker.length;
+    const ocrStart = text.indexOf(ocrMarker);
+    const digital = text.slice(digitalStart, ocrStart);
+    const ocr = text.slice(ocrStart + ocrMarker.length);
+    return Math.max(countOneSource(digital), countOneSource(ocr));
+  }
+
+  return countOneSource(text);
 }
 
 function isVasilhame(description = "") {

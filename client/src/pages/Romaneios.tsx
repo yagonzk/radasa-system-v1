@@ -33,7 +33,7 @@ import {
   shouldTryOcrFallback,
 } from "@/lib/romaneioImportQuality";
 
-const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.03";
+const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.05";
 import { formatBRL, formatDate } from "@/lib/exportUtils";
 import {
   Check,
