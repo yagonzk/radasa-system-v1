@@ -30,11 +30,14 @@ export type PdfTextOptions = {
 const MIN_SEARCHABLE_CHARACTERS = 120;
 const OCR_TARGET_DPI_SCALE = 330 / 72;
 const BULK_OCR_TARGET_DPI_SCALE = 330 / 72;
-const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 400 / 72;
+const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 600 / 72;
 const OCR_MAX_PIXELS = 11_000_000;
 const BULK_OCR_MAX_PIXELS = 11_000_000;
-const HIGH_ACCURACY_OCR_MAX_PIXELS = 16_000_000;
+const HIGH_ACCURACY_OCR_MAX_PIXELS = 14_000_000;
 const BULK_OCR_WORKERS = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 8) / 2)));
+
+const DIGITAL_TEXT_MARKER = "[[RADASA_DIGITAL_TEXT]]";
+const OCR_TEXT_MARKER = "[[RADASA_OCR_TEXT]]";
 
 type TesseractModule = typeof import("tesseract.js");
 type OcrWorker = Awaited<ReturnType<TesseractModule["createWorker"]>>;
@@ -273,12 +276,16 @@ function looksLikeRomaneioDigitalText(text: string) {
 }
 
 function looksLikeSigaRomaneioHeader(text: string) {
+  // A camada digital de alguns PDFs vem corrompida como "SIGA /[FATRU41/v.12"
+  // (há um colchete extra entre / e FATRU41). Por isso a detecção não pode
+  // depender da sequência literal "SIGA/FATRU41". Removemos pontuação e
+  // espaços para reconhecer o cabeçalho mesmo com esses artefatos.
   const compact = text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
-    .replace(/\s+/g, "");
-  return compact.includes("ROMANEIODEFRETE") && compact.includes("SIGA/FATRU41");
+    .replace(/[^A-Z0-9]/g, "");
+  return compact.includes("ROMANEIODEFRETE") && compact.includes("SIGAFATRU41");
 }
 
 function countSigaProductCandidates(text: string) {
@@ -307,8 +314,14 @@ function needsOcr(text: string) {
   return ratio >= 0.65 && averageLength <= 2.5;
 }
 
-async function renderPageForOcr(page: any, bulk = false, highAccuracy = false) {
+async function renderPageForOcr(
+  page: any,
+  bulk = false,
+  highAccuracy = false,
+  cropTopFraction = 1,
+) {
   const baseViewport = page.getViewport({ scale: 1 });
+  const safeCrop = Math.min(1, Math.max(0.2, cropTopFraction));
   const pixelLimit = highAccuracy
     ? HIGH_ACCURACY_OCR_MAX_PIXELS
     : bulk ? BULK_OCR_MAX_PIXELS : OCR_MAX_PIXELS;
@@ -316,19 +329,22 @@ async function renderPageForOcr(page: any, bulk = false, highAccuracy = false) {
     ? HIGH_ACCURACY_OCR_TARGET_DPI_SCALE
     : bulk ? BULK_OCR_TARGET_DPI_SCALE : OCR_TARGET_DPI_SCALE;
   const maxScale = Math.sqrt(
-    pixelLimit / Math.max(1, baseViewport.width * baseViewport.height),
+    pixelLimit / Math.max(1, baseViewport.width * baseViewport.height * safeCrop),
   );
   const scale = Math.min(targetScale, maxScale);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
+  canvas.height = Math.ceil(viewport.height * safeCrop);
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("O navegador não conseguiu preparar o PDF para OCR.");
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
+  // O canvas menor funciona como clip natural. Nos romaneios SIGA o relatório
+  // fica no topo da página; remover a grande área branca permite OCR ~600 DPI
+  // sem estourar memória e melhora muito números pequenos/códigos.
   await page.render({ canvas, canvasContext: context, viewport }).promise;
   return canvas;
 }
@@ -368,7 +384,10 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
       const fragmentedText = needsOcr(digitalText);
       const forceOcr = options.forceOcr === true;
 
-      if (!forceOcr && sigaGeometricText) {
+      // A reconstrução geométrica pode ser apenas PARCIAL (ex.: lado direito
+      // digital e CLIENTE/produto rasterizados). Só pulamos o OCR quando essa
+      // camada já contém estrutura suficiente para o parser.
+      if (!forceOcr && sigaGeometricText && !fragmentedText) {
         pages.push(digitalText);
         page.cleanup();
         continue;
@@ -388,7 +407,14 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
         progress: 0,
       });
 
-      const canvas = await renderPageForOcr(page, options.bulk === true, forceOcr);
+      const isSiga = looksLikeSigaRomaneioHeader(digitalText);
+      const highAccuracy = forceOcr || (fragmentedText && isSiga);
+      const canvas = await renderPageForOcr(
+        page,
+        options.bulk === true,
+        highAccuracy,
+        isSiga ? 0.40 : 1,
+      );
       let recognized: any;
       if (options.bulk) {
         const scheduler = await getBulkOcrScheduler();
@@ -408,14 +434,22 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
           : digitalText
       );
 
-      // Mesmo quando o corpo precisa de OCR, a camada digital costuma preservar
-      // melhor a linha de TRANSPORTADORA / Cód. Veículo / PLACA. Mantemos apenas
-      // essas linhas digitais junto do OCR para não duplicar produtos.
-      pages.push(
-        digitalHeader && !preferredText.includes(digitalHeader)
-          ? `${digitalHeader}\n${preferredText}`
-          : preferredText,
-      );
+      // Em alguns SIGA o lado esquerdo (CLIENTE/produto) está rasterizado e o
+      // lado direito (quantidade/total/NF) continua como texto digital. Nenhuma
+      // das fontes isoladamente é suficiente. Enviamos ambas, marcadas, para o
+      // backend fazer a fusão linha-a-linha. Para outros PDFs mantemos o fluxo
+      // simples anterior.
+      if (isSiga && searchableCharacters(digitalText) > 0) {
+        pages.push(
+          `${DIGITAL_TEXT_MARKER}\n${digitalText}\n${OCR_TEXT_MARKER}\n${ocrText}`,
+        );
+      } else {
+        pages.push(
+          digitalHeader && !preferredText.includes(digitalHeader)
+            ? `${digitalHeader}\n${preferredText}`
+            : preferredText,
+        );
+      }
       canvas.width = 1;
       canvas.height = 1;
       page.cleanup();

@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const ROMANEIO_PARSER_VERSION = "2026.08.11.01";
+export const ROMANEIO_PARSER_VERSION = "2026.08.11.03";
 
 export type TipoRomaneioPdf =
   | "Bonificação - Lebrinha"
@@ -922,6 +922,408 @@ function parseSigaCompactStream(
   return { clientes, produtos };
 }
 
+
+const RADASA_DIGITAL_TEXT_MARKER = "[[RADASA_DIGITAL_TEXT]]";
+const RADASA_OCR_TEXT_MARKER = "[[RADASA_OCR_TEXT]]";
+
+type HybridSupportRow = {
+  quantidade: number;
+  valorUnitario: number | null;
+  valorTotal: number | null;
+  notaFiscal: string;
+  serie: string;
+  instrucaoCobranca: string;
+};
+
+type LooseOcrProduct = {
+  cliente: RomaneioPdfCliente;
+  blocoCliente: number;
+  romaneio: string;
+  data: string;
+  item: string;
+  codigo: string;
+  descricao: string;
+  quantidade: number;
+  valorTotal: number | null;
+  instrucaoCobranca: string;
+  notaFiscal: string;
+  serie: string;
+};
+
+function splitHybridPdfSources(rawText: string) {
+  if (!rawText.includes(RADASA_DIGITAL_TEXT_MARKER) || !rawText.includes(RADASA_OCR_TEXT_MARKER)) {
+    return null;
+  }
+
+  const digital: string[] = [];
+  const ocr: string[] = [];
+  const regex = /\[\[RADASA_(DIGITAL|OCR)_TEXT\]\]\s*([\s\S]*?)(?=\[\[RADASA_(?:DIGITAL|OCR)_TEXT\]\]|$)/g;
+  for (const match of rawText.matchAll(regex)) {
+    if (match[1] === "DIGITAL") digital.push(match[2].trim());
+    else ocr.push(match[2].trim());
+  }
+
+  return {
+    digital: digital.filter(Boolean).join("\n"),
+    ocr: ocr.filter(Boolean).join("\n"),
+  };
+}
+
+/**
+ * Converte somente trechos que deveriam ser numéricos. Não aplicamos isso ao
+ * texto inteiro porque letras como S/G/T são legítimas em nomes de produtos.
+ */
+function repairOcrNumericToken(value: string) {
+  return value
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[OQD]/g, "0")
+    .replace(/[IL|]/g, "1")
+    .replace(/Z/g, "2")
+    .replace(/S/g, "5")
+    .replace(/G/g, "6")
+    .replace(/T/g, "7")
+    .replace(/B/g, "8")
+    .replace(/[^0-9.,/]/g, "");
+}
+
+function parseOcrBrazilianNumber(value: string) {
+  const repaired = repairOcrNumericToken(value)
+    .replace(/,(?=\d{3}(?:,|$))/g, ".")
+    .replace(/(\d)\.(?=\d{2}$)/, "$1,");
+  return parseBrazilianNumber(repaired);
+}
+
+function normalizeHybridDescription(value: string) {
+  let description = humanizeProduct(value)
+    .replace(/[|¦]/g, "I")
+    .replace(/\b20\s+LI\b/gi, "20 LT")
+    .replace(/\bGARRAF[ÃA]O\b/gi, "GARRAFAO")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const n = normalize(description);
+  if (/VASI[A-Z0-9]{0,8}(?:LH|LE)[A-Z0-9]{0,5}AME/.test(n) || n.includes("VASILHAME")) {
+    description = description.replace(/VASI\S*AME/gi, "VASILHAME");
+  }
+  return description;
+}
+
+function hybridProductFamily(value: string) {
+  const n = normalize(value);
+  if (n.includes("VASI") && (n.includes("20L") || n.includes("20LT"))) return "VASILHAME20L";
+  if ((n.includes("GARR") || n.includes("GARA")) && (n.includes("20L") || n.includes("20LT"))) {
+    return "GARRAFAO20L";
+  }
+  return n;
+}
+
+function humanizeLooseInstruction(value: string, total: number) {
+  const n = normalize(value);
+  if ((n.includes("CLIENTE") && (n.includes("RECEB") || n.includes("RECEH"))) || n.includes("RECEBERCCLIENTE")) {
+    return "Receber c/ Cliente";
+  }
+  if (
+    n.includes("LEBRINHA") &&
+    (n.includes("ACERT") || n.includes("INCLUS") || n.includes("INCLUG"))
+  ) {
+    return "Incluso NF - Acertar c/ Lebrinha";
+  }
+  return humanizeInstruction(value, total);
+}
+
+function parseLooseOcrClient(line: string): RomaneioPdfCliente | null {
+  const match = line.match(/CLIENTE\s*[:;o]?\s*(.*?)\s*-\s*(.+)$/i);
+  if (!match) return null;
+
+  const rawCode = match[1].replace(/\s+/g, "");
+  const codeCandidate = rawCode.match(/([A-Z0-9]{4,12})\s*\/\s*([A-Z0-9]{1,3})/i);
+  let codigo = "";
+  if (codeCandidate) {
+    const left = repairOcrNumericToken(codeCandidate[1]).replace(/\D/g, "");
+    const right = repairOcrNumericToken(codeCandidate[2]).replace(/\D/g, "");
+    if (left.length >= 4 && right.length >= 1) {
+      codigo = `${left}/${right.padStart(2, "0").slice(-2)}`;
+    }
+  }
+
+  const nome = match[2]
+    .replace(/\s+/g, " ")
+    .replace(/^[^A-ZÀ-Ü0-9]+/i, "")
+    .trim();
+  if (!nome) return null;
+  return { codigo, nome };
+}
+
+function parseLooseOcrProductLine(
+  line: string,
+  cliente: RomaneioPdfCliente,
+  blocoCliente: number,
+): LooseOcrProduct | null {
+  const normalizedLine = line.replace(/\t/g, " ").replace(/\s+/g, " ").trim();
+  const prefix = normalizedLine.match(
+    /^([A-Z0-9]{5,8})\s+([A-Z0-9'.,/-]{6,14})\s+([A-Z0-9]{2})\s+([A-Z0-9]{4,12})-(.+)$/i,
+  );
+  if (!prefix) return null;
+
+  const romaneioDigits = repairOcrNumericToken(prefix[1]).replace(/\D/g, "");
+  const dateDigits = repairOcrNumericToken(prefix[2]).replace(/[^0-9/]/g, "");
+  const dateMatch = dateDigits.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
+  const itemDigits = repairOcrNumericToken(prefix[3]).replace(/\D/g, "");
+  if (romaneioDigits.length < 5 || !dateMatch || itemDigits.length < 1) return null;
+
+  const remainder = prefix[5];
+  const quantityRegex = /[0-9OQILDSBGTZ.]+\s*,\s*[0-9OQILDSBGTZ]{1,3}/gi;
+  const quantityMatch = quantityRegex.exec(remainder);
+  if (!quantityMatch || quantityMatch.index == null) return null;
+
+  const descricao = normalizeHybridDescription(remainder.slice(0, quantityMatch.index).trim());
+  if (!descricao || !/[A-ZÀ-Ü]/i.test(descricao)) return null;
+
+  const quantidade = parseOcrBrazilianNumber(quantityMatch[0]);
+  if (!(quantidade > 0) || quantidade > 100000) return null;
+
+  const afterQuantity = remainder.slice(quantityMatch.index + quantityMatch[0].length);
+  const numericCandidates = Array.from(
+    afterQuantity.matchAll(/[0-9OQILDSBGTZ.]+\s*,\s*[0-9OQILDSBGTZ]{1,3}/gi),
+    (match) => parseOcrBrazilianNumber(match[0]),
+  ).filter((value) => Number.isFinite(value) && value >= 0);
+  const valorTotal = numericCandidates.length ? Math.max(...numericCandidates) : null;
+
+  let notaFiscal = "";
+  let serie = "";
+  const nfMatch = afterQuantity.match(/([A-Z0-9§|]{4,14})\s*\/\s*([A-Z0-9]{3,4})\s*$/i);
+  if (nfMatch) {
+    const nfRaw = nfMatch[1];
+    const nfDigits = repairOcrNumericToken(nfRaw).replace(/\D/g, "");
+    const serieDigits = repairOcrNumericToken(nfMatch[2]).replace(/\D/g, "");
+    // No fluxo híbrido, só tratamos a NF do OCR como confiável quando o
+    // trecho já veio numérico. Se vier letras/símbolos, a camada digital ou a
+    // sequência das NFs é mais segura do que "adivinhar" caracteres.
+    if (/^\d{5,9}$/.test(nfRaw) && nfDigits.length >= 5) notaFiscal = nfDigits;
+    if (serieDigits.length >= 2) serie = serieDigits.padStart(3, "0").slice(-3);
+  }
+
+  const totalForInstruction = valorTotal ?? 0;
+  const instrucaoCobranca = humanizeLooseInstruction(afterQuantity, totalForInstruction);
+
+  return {
+    cliente,
+    blocoCliente,
+    romaneio: romaneioDigits,
+    data: toIsoDate(`${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`),
+    item: itemDigits.padStart(2, "0").slice(-2),
+    codigo: prefix[4].replace(/[^A-Z0-9]/gi, "").toUpperCase(),
+    descricao,
+    quantidade,
+    valorTotal,
+    instrucaoCobranca,
+    notaFiscal,
+    serie,
+  };
+}
+
+function parseLooseOcrDocument(text: string) {
+  const clientes: RomaneioPdfCliente[] = [];
+  const produtos: LooseOcrProduct[] = [];
+  const lines = text.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+  let currentClient: RomaneioPdfCliente | null = null;
+  let block = 0;
+
+  for (const line of lines) {
+    const client = parseLooseOcrClient(line);
+    if (client) {
+      currentClient = client;
+      block += 1;
+      if (!clientes.some((existing) =>
+        (client.codigo && digits(existing.codigo) === digits(client.codigo)) ||
+        normalize(existing.nome) === normalize(client.nome)
+      )) {
+        clientes.push(client);
+      }
+      continue;
+    }
+    if (!currentClient) continue;
+    const product = parseLooseOcrProductLine(line, currentClient, block);
+    if (product) produtos.push(product);
+  }
+
+  return { clientes, produtos };
+}
+
+function parseDigitalSupportRows(text: string): HybridSupportRow[] {
+  const rows: HybridSupportRow[] = [];
+  const lines = text.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+
+  for (const rawLine of lines) {
+    let line = rawLine
+      // PDF.js às vezes representa 7.157,60 como "7,157, 60".
+      .replace(/(\d{1,3}),(\d{3}),\s*(\d{2})/g, "$1.$2,$3")
+      .replace(/(\d)\s*,\s*(\d{2})/g, "$1,$2");
+
+    const nfMatch = line.match(/([0-9OQILDSBGTZ§]{4,12})\s*\/\s*([0-9OQILDSBGTZ]{3,4})\s*$/i);
+    if (!nfMatch || nfMatch.index == null) continue;
+
+    const beforeNf = line.slice(0, nfMatch.index);
+    const numberMatches = Array.from(
+      beforeNf.matchAll(/(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,6})/g),
+      (match) => parseBrazilianNumber(match[0]),
+    ).filter((value) => Number.isFinite(value) && value >= 0);
+    if (!numberMatches.length) continue;
+
+    const quantidade = numberMatches[0];
+    let valorUnitario: number | null = null;
+    let valorTotal: number | null = null;
+    if (numberMatches.length >= 3) {
+      valorUnitario = numberMatches[1];
+      valorTotal = numberMatches[2];
+    } else if (numberMatches.length >= 2) {
+      valorTotal = numberMatches[1];
+    }
+
+    const nfRaw = nfMatch[1];
+    const nfDigitsRaw = repairOcrNumericToken(nfRaw).replace(/\D/g, "");
+    const rawWasPureDigits = /^\d+$/.test(nfRaw);
+    const nfDigits = nfDigitsRaw.length === 5 && rawWasPureDigits
+      ? nfDigitsRaw.padStart(6, "0")
+      : nfDigitsRaw;
+    const serieDigits = repairOcrNumericToken(nfMatch[2]).replace(/\D/g, "");
+
+    rows.push({
+      quantidade,
+      valorUnitario,
+      valorTotal,
+      notaFiscal: rawWasPureDigits && nfDigits.length >= 4 && nfDigits.length <= 9 ? nfDigits : "",
+      serie: serieDigits.length >= 2 ? serieDigits.padStart(3, "0").slice(-3) : "",
+      instrucaoCobranca: humanizeLooseInstruction(beforeNf, valorTotal ?? 0),
+    });
+  }
+
+  return rows;
+}
+
+function repairSequentialInvoiceNumbers(items: RomaneioPdfProduto[]) {
+  const known = items
+    .map((item, index) => ({ index, value: /^\d{6}$/.test(item.notaFiscal) ? Number(item.notaFiscal) : NaN }))
+    .filter((entry) => Number.isFinite(entry.value));
+
+  let base: number | null = null;
+  for (let i = 0; i < known.length - 1; i += 1) {
+    const left = known[i];
+    const right = known[i + 1];
+    if (right.index === left.index + 1 && right.value === left.value + 1) {
+      base = left.value - left.index;
+      break;
+    }
+  }
+  if (base == null) return;
+
+  for (let index = 0; index < items.length; index += 1) {
+    const expected = base + index;
+    const current = items[index].notaFiscal;
+    if (!/^\d{6}$/.test(current)) {
+      items[index].notaFiscal = String(expected).padStart(6, "0");
+    }
+  }
+}
+
+function parseHybridSigaDocument(rawText: string) {
+  const sources = splitHybridPdfSources(rawText);
+  if (!sources) return { clientes: [] as RomaneioPdfCliente[], produtos: [] as RomaneioPdfProduto[] };
+
+  const loose = parseLooseOcrDocument(sources.ocr);
+  const supportRows = parseDigitalSupportRows(sources.digital);
+  if (!loose.produtos.length) {
+    return { clientes: loose.clientes, produtos: [] as RomaneioPdfProduto[] };
+  }
+
+  // Preços unitários confiáveis vindos da camada digital. O relatório pode
+  // rasterizar uma coluna em uma linha e mantê-la digital na linha seguinte;
+  // agrupamos por família de produto para aproveitar a leitura boa.
+  const trustedUnitByFamily = new Map<string, number>();
+  for (let index = 0; index < loose.produtos.length; index += 1) {
+    const product = loose.produtos[index];
+    const support = supportRows[index];
+    if (!support || !(support.valorUnitario && support.valorUnitario > 0) || !(support.valorTotal && support.valorTotal > 0)) {
+      continue;
+    }
+    const quantity = support.quantidade > 0 ? support.quantidade : product.quantidade;
+    if (Math.abs(quantity * support.valorUnitario - support.valorTotal) <= 0.08) {
+      trustedUnitByFamily.set(hybridProductFamily(product.descricao), support.valorUnitario);
+    }
+  }
+
+  const produtos: RomaneioPdfProduto[] = loose.produtos.map((product, index) => {
+    const support = supportRows[index];
+    let quantidade = support?.quantidade && support.quantidade > 0
+      ? support.quantidade
+      : product.quantidade;
+    const ehVasilhame = isVasilhameDescription(product.descricao);
+    const family = hybridProductFamily(product.descricao);
+    const trustedUnit = trustedUnitByFamily.get(family) ?? null;
+
+    const totalCandidates = [product.valorTotal, support?.valorTotal]
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
+
+    let valorTotal = 0;
+    let valorUnitario = 0;
+    if (!ehVasilhame) {
+      if (trustedUnit && quantidade > 0) {
+        const expected = quantidade * trustedUnit;
+        const closest = [...totalCandidates].sort(
+          (a, b) => Math.abs(a - expected) - Math.abs(b - expected),
+        )[0];
+        valorTotal = closest != null && Math.abs(closest - expected) <= Math.max(0.12, expected * 0.08)
+          ? closest
+          : Math.round(expected * 100) / 100;
+        valorUnitario = trustedUnit;
+      } else {
+        // OCR do total é muito mais estável que OCR do preço unitário nesse
+        // formulário. Usamos o maior candidato monetário e recalculamos o
+        // unitário pela própria relação Qtde × Unitário = Total.
+        valorTotal = totalCandidates.length ? Math.max(...totalCandidates) : 0;
+        if (quantidade > 0 && valorTotal > 0) {
+          valorUnitario = Math.round((valorTotal / quantidade) * 100) / 100;
+        } else if (support?.valorUnitario && support.valorUnitario > 0) {
+          valorUnitario = support.valorUnitario;
+        }
+      }
+    }
+
+    let notaFiscal = "";
+    let serie = support?.serie || product.serie || "";
+    const nfCandidates = [support?.notaFiscal, product.notaFiscal].filter(Boolean) as string[];
+    notaFiscal = nfCandidates.find((value) => /^\d{6,9}$/.test(value)) ?? nfCandidates[0] ?? "";
+    if (notaFiscal.length === 5) notaFiscal = notaFiscal.padStart(6, "0");
+
+    const instructionSource = support?.instrucaoCobranca && normalize(support.instrucaoCobranca).length > 2
+      ? support.instrucaoCobranca
+      : product.instrucaoCobranca;
+    const instrucaoCobranca = humanizeLooseInstruction(instructionSource, valorTotal);
+
+    return {
+      romaneio: product.romaneio,
+      data: product.data,
+      item: product.item,
+      codigo: product.codigo,
+      descricao: product.descricao,
+      quantidade,
+      valorUnitario: ehVasilhame ? 0 : valorUnitario,
+      valorTotal: ehVasilhame ? 0 : valorTotal,
+      instrucaoCobranca,
+      notaFiscal,
+      serie,
+      tipoManifesto: inferTipo(instrucaoCobranca, ehVasilhame ? 0 : valorTotal),
+      clienteCodigo: product.cliente.codigo,
+      clienteNome: product.cliente.nome,
+      blocoCliente: product.blocoCliente,
+    };
+  });
+
+  repairSequentialInvoiceNumbers(produtos);
+  return { clientes: loose.clientes, produtos };
+}
+
 export function interpretarTextoManifestoPdf(
   rawText: string,
 ): RomaneioPdfInterpretado {
@@ -1021,6 +1423,24 @@ export function interpretarTextoManifestoPdf(
     }
   }
 
+  // PDFs híbridos do SIGA podem ter CLIENTE/produto rasterizados e
+  // quantidade/total/NF na camada textual. Nessa situação juntamos as duas
+  // fontes em vez de exigir que uma única extração esteja perfeita.
+  const hybridParsed = parseHybridSigaDocument(rawText);
+  if (hybridParsed.produtos.length >= produtos.length && hybridParsed.produtos.length > 0) {
+    clientes.splice(0, clientes.length);
+    for (const client of hybridParsed.clientes) {
+      if (!clientes.some((item) =>
+        (client.codigo && digits(item.codigo) === digits(client.codigo)) ||
+        normalize(item.nome) === normalize(client.nome)
+      )) {
+        clientes.push(client);
+      }
+    }
+    produtos.splice(0, produtos.length, ...hybridParsed.produtos);
+    avisos.push(`${hybridParsed.produtos.length} item(ns) reconstruído(s) pela leitura híbrida PDF + OCR.`);
+  }
+
   // Corrige substituições/inserções de um único dígito quando o mesmo romaneio
   // aparece corretamente em outras linhas do documento (ex.: 275190/2175190
   // -> 175190). Isso é especialmente útil no OCR de páginas digitalizadas.
@@ -1111,12 +1531,42 @@ async function sugerirVinculosComSession(
 ) {
   const { clientes, produtos, clientesCriados, produtosCriados } = session;
 
+  function textEditDistance(left: string, right: string) {
+    const a = normalize(left);
+    const b = normalize(right);
+    if (a === b) return 0;
+    const previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i += 1) {
+      const current = [i];
+      for (let j = 1; j <= b.length; j += 1) {
+        current[j] = Math.min(
+          current[j - 1] + 1,
+          previous[j] + 1,
+          previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+        );
+      }
+      previous.splice(0, previous.length, ...current);
+    }
+    return previous[b.length];
+  }
+
   async function ensureCliente(pdf: RomaneioPdfCliente) {
     const code = digits(pdf.codigo);
     let cadastro = clientes.find((item) =>
       (code && digits(item.codigoInterno ?? "") === code) ||
       normalize(item.nomeFantasia ?? "") === normalize(pdf.nome),
     );
+    if (!cadastro && pdf.nome) {
+      const pdfName = normalize(pdf.nome);
+      cadastro = clientes
+        .map((item) => ({ item, distance: textEditDistance(item.nomeFantasia ?? "", pdf.nome) }))
+        .filter(({ item, distance }) => {
+          const dbName = normalize(item.nomeFantasia ?? "");
+          const maxLen = Math.max(pdfName.length, dbName.length);
+          return maxLen >= 6 && distance <= Math.max(2, Math.floor(maxLen * 0.16));
+        })
+        .sort((a, b) => a.distance - b.distance)[0]?.item;
+    }
     if (!cadastro) {
       cadastro = await prisma.cliente.create({
         data: {
@@ -1139,6 +1589,13 @@ async function sugerirVinculosComSession(
     const code = digits(pdf.codigo);
     const nomePdf = normalize(pdf.descricao);
     let cadastro = produtos.find((item) => normalize(item.nome ?? "") === nomePdf);
+
+    if (!cadastro) {
+      const family = hybridProductFamily(pdf.descricao);
+      if (family && family !== nomePdf) {
+        cadastro = produtos.find((item) => hybridProductFamily(item.nome ?? "") === family);
+      }
+    }
 
     if (!cadastro && code) {
       const porCodigo = produtos.find((item) => digits(item.codigoInterno ?? "") === code);
@@ -1183,6 +1640,15 @@ async function sugerirVinculosComSession(
     const cliente = clientesPorCodigo.get(digits(produtoPdf.clienteCodigo)) ??
       await ensureCliente({ codigo: produtoPdf.clienteCodigo, nome: produtoPdf.clienteNome });
     const cadastro = await ensureProduto(produtoPdf);
+
+    // Depois do vínculo, o cadastro mestre é a fonte de verdade para campos
+    // que o OCR pode confundir. Isso impede gravar código/nome corrompidos
+    // quando cliente/produto já existem no sistema.
+    if (cliente.codigoInterno) produtoPdf.clienteCodigo = cliente.codigoInterno;
+    if (cliente.nomeFantasia) produtoPdf.clienteNome = cliente.nomeFantasia;
+    if (cadastro.codigoInterno) produtoPdf.codigo = cadastro.codigoInterno;
+    if (cadastro.nome) produtoPdf.descricao = cadastro.nome;
+
     itens.push({
       produto: produtoPdf,
       cliente: { ...cliente, criadoAutomaticamente: clientesCriados.has(cliente.id) },

@@ -20,7 +20,7 @@ Total ................................................ 7.780,00
 
 const result = interpretarTextoManifestoPdf(ocrText);
 
-assert.equal(result.parserVersion, "2026.08.11.01");
+assert.equal(result.parserVersion, "2026.08.11.03");
 assert.equal(result.produtos.length, 3);
 assert.deepEqual(result.romaneios, ["175474", "175601", "175602"]);
 assert.deepEqual(result.notasFiscais, ["060707/004", "060708/004", "060709/004"]);

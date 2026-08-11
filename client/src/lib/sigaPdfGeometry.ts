@@ -25,6 +25,7 @@ export function extrairTextoGeometricoSiga(items: SigaPdfTextItem[]): string | n
         text,
         x: Number(transform[4]) || 0,
         y: Number(transform[5]) || 0,
+        width: Math.abs(Number(item.width) || 0),
         originalIndex,
       };
     })
@@ -57,12 +58,22 @@ export function extrairTextoGeometricoSiga(items: SigaPdfTextItem[]): string | n
 
   const physicalLines = lines
     .sort((a, b) => b.y - a.y)
-    .map((line) =>
-      line.items
-        .sort((a, b) => a.x - b.x || a.originalIndex - b.originalIndex)
-        .map((item) => item.text)
-        .join(""),
-    )
+    .map((line) => {
+      const ordered = line.items
+        .sort((a, b) => a.x - b.x || a.originalIndex - b.originalIndex);
+      let output = "";
+      let previousEnd = Number.NEGATIVE_INFINITY;
+      for (const item of ordered) {
+        const gap = item.x - previousEnd;
+        // Mantém os espaços visuais entre colunas/palavras. Em PDFs que
+        // entregam um glifo por TextItem, width + X fazem gap≈0 e os caracteres
+        // continuam unidos; entre colunas o gap é grande e vira separador.
+        if (output && Number.isFinite(gap) && gap > 1.25) output += " ";
+        output += item.text;
+        previousEnd = Math.max(previousEnd, item.x + item.width);
+      }
+      return output;
+    })
     .filter(Boolean);
 
   const text = physicalLines.join("\n");
@@ -70,11 +81,12 @@ export function extrairTextoGeometricoSiga(items: SigaPdfTextItem[]): string | n
 
   // Só ativa esse caminho para o relatório conhecido. Assim outras telas que
   // reutilizam pdfText.ts não têm a extração alterada.
+  // Mesmo quando CLIENTE/produto estão rasterizados (imagem), a camada
+  // digital ainda contém cabeçalho, quantidade, total e NF. Preservamos essa
+  // geometria parcial: o OCR visual será combinado com ela depois.
   const isSigaRomaneio =
     compact.includes("ROMANEIODEFRETE") &&
-    compact.includes("TRANSPORTADORA:") &&
-    compact.includes("CLIENTE:") &&
-    /\d{6}\d{2}\/\d{2}\/\d{2}\d{2}\d{4,10}-/.test(compact);
+    compact.includes("TRANSPORTADORA");
 
   return isSigaRomaneio ? text : null;
 }
