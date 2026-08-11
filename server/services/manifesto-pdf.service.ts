@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const ROMANEIO_PARSER_VERSION = "2026.08.08.14";
+export const ROMANEIO_PARSER_VERSION = "2026.08.11.01";
 
 export type TipoRomaneioPdf =
   | "Bonificação - Lebrinha"
@@ -233,6 +233,20 @@ function splitCompactNumericTail(value: string): CompactNumericTail | null {
   };
 }
 
+
+function parsePrintedSummaryTotal(text: string) {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\r/g, "");
+  const resumoIndex = normalized.toUpperCase().lastIndexOf("RESUMO");
+  if (resumoIndex < 0) return 0;
+
+  const resumo = normalized.slice(resumoIndex);
+  const totalMatch = resumo.match(/(?:^|\n)\s*TOTAL\s*[^0-9\n]{0,120}([0-9.]+,[0-9]{2})/im);
+  return totalMatch ? parseBrazilianNumber(totalMatch[1]) : 0;
+}
+
 function toIsoDate(value: string) {
   const match = value.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
   if (!match) return "";
@@ -306,17 +320,17 @@ function parseRomaneioHeaderMetadata(text: string) {
 
   const plateAndModelMatch =
     headerText.match(
-      /P\s*L\s*A\s*C\s*A\s*V\s*E\s*I\s*C\s*U\s*L\s*O\s*[:;]?\s*([A-Z]{3}[- ]?[0-9A-Z][A-Z0-9][0-9]{2})\s*-?\s*(.*?)(?=P\s*E\s*R\s*I\s*O\s*D\s*O\s*[:;]|$)/i,
+      /P\s*L\s*A\s*C\s*A\s*V\s*E\s*I\s*C\s*U\s*L\s*O\s*[:;]?\s*([A-Z]{3}[- ]?[A-Z0-9]{4,5})\s*-?\s*(.*?)(?=P\s*E\s*R\s*I\s*O\s*D\s*O\s*[:;]|$)/i,
     ) ??
     compactHeader.match(
-      /PLACAVEICULO[:;]?([A-Z]{3}-?[0-9A-Z][A-Z0-9][0-9]{2})-?(.*?)(?=PERIODO[:;]|$)/i,
+      /PLACAVEICULO[:;]?([A-Z]{3}-?[A-Z0-9]{4,5})-?(.*?)(?=PERIODO[:;]|$)/i,
     );
 
   // Fallback deliberadamente restrito: só procura uma placa brasileira depois
   // de algum marcador de PLACA, evitando capturar códigos de NF/produto.
   const plateFallback = !plateAndModelMatch
     ? headerText.match(
-        /P\s*L\s*A\s*C\s*A[^A-Z0-9]{0,20}([A-Z]{3}[- ]?[0-9A-Z][A-Z0-9][0-9]{2})/i,
+        /P\s*L\s*A\s*C\s*A[^A-Z0-9]{0,20}([A-Z]{3}[- ]?[A-Z0-9]{4,5})/i,
       )
     : null;
 
@@ -1036,6 +1050,17 @@ export function interpretarTextoManifestoPdf(
     avisos.push(`${recoveredItems} item(ns) recuperado(s) pela leitura alternativa do PDF.`);
   }
 
+  const calculatedTotal = produtos.reduce((sum, produto) => sum + produto.valorTotal, 0);
+  const printedSummaryTotal = parsePrintedSummaryTotal(text);
+  if (printedSummaryTotal > 0) {
+    const totalTolerance = Math.max(0.08, printedSummaryTotal * 0.0025);
+    if (Math.abs(calculatedTotal - printedSummaryTotal) > totalTolerance) {
+      avisos.push(
+        `Soma dos itens (${calculatedTotal.toFixed(2)}) diverge do total impresso (${printedSummaryTotal.toFixed(2)}).`,
+      );
+    }
+  }
+
   if (!dataEmissao) avisos.push("Data de emissão não identificada.");
   if (!headerMetadata.transportadoraCodigo && !headerMetadata.transportadoraNome) avisos.push("Transportadora não identificada.");
   if (!headerMetadata.placaVeiculo) avisos.push("Placa do veículo não identificada.");
@@ -1055,7 +1080,7 @@ export function interpretarTextoManifestoPdf(
     produtos,
     romaneios: Array.from(new Set(produtos.map((produto) => produto.romaneio))),
     notasFiscais: Array.from(new Set(produtos.map((produto) => `${produto.notaFiscal}/${produto.serie}`))),
-    valorTotal: produtos.reduce((sum, produto) => sum + produto.valorTotal, 0),
+    valorTotal: printedSummaryTotal || calculatedTotal,
     avisos,
   };
 }

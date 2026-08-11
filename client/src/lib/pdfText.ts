@@ -28,10 +28,12 @@ export type PdfTextOptions = {
 };
 
 const MIN_SEARCHABLE_CHARACTERS = 120;
-const OCR_TARGET_DPI_SCALE = 300 / 72;
-const BULK_OCR_TARGET_DPI_SCALE = 300 / 72;
-const OCR_MAX_PIXELS = 9_000_000;
-const BULK_OCR_MAX_PIXELS = 9_000_000;
+const OCR_TARGET_DPI_SCALE = 330 / 72;
+const BULK_OCR_TARGET_DPI_SCALE = 330 / 72;
+const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 400 / 72;
+const OCR_MAX_PIXELS = 11_000_000;
+const BULK_OCR_MAX_PIXELS = 11_000_000;
+const HIGH_ACCURACY_OCR_MAX_PIXELS = 16_000_000;
 const BULK_OCR_WORKERS = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 8) / 2)));
 
 type TesseractModule = typeof import("tesseract.js");
@@ -65,7 +67,7 @@ async function getOcrWorker() {
         },
       });
       await worker.setParameters({
-        tessedit_pageseg_mode: PSM.AUTO,
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         preserve_interword_spaces: "1",
       });
       return worker;
@@ -91,7 +93,7 @@ async function getBulkOcrScheduler() {
         Array.from({ length: BULK_OCR_WORKERS }, async () => {
           const worker = await createWorker("por", 1);
           await worker.setParameters({
-            tessedit_pageseg_mode: PSM.AUTO,
+            tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
             preserve_interword_spaces: "1",
           });
           scheduler.addWorker(worker);
@@ -270,17 +272,49 @@ function looksLikeRomaneioDigitalText(text: string) {
   );
 }
 
+function looksLikeSigaRomaneioHeader(text: string) {
+  const compact = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  return compact.includes("ROMANEIODEFRETE") && compact.includes("SIGA/FATRU41");
+}
+
+function countSigaProductCandidates(text: string) {
+  const compact = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  return compact.match(/\d{5,8}\d{2}\/\d{2}\/\d{2}[0-9OQIL]{2}\d{4,10}-/g)?.length ?? 0;
+}
+
 function needsOcr(text: string) {
-  if (looksLikeRomaneioDigitalText(text)) return false;
+  if (looksLikeRomaneioDigitalText(text) && countSigaProductCandidates(text) > 0) return false;
+
+  // Alguns PDFs do SIGA têm uma camada de texto parcial: cabeçalho e totais
+  // existem, mas CLIENTE/produtos estão apenas na imagem. Antes isso parecia
+  // um PDF pesquisável e o parser recebia zero linhas. Nesses casos o OCR é
+  // obrigatório já na primeira leitura.
+  if (looksLikeSigaRomaneioHeader(text)) {
+    const compact = text.replace(/\s+/g, "").toUpperCase();
+    if (!compact.includes("CLIENTE") || countSigaProductCandidates(text) === 0) return true;
+  }
+
   if (searchableCharacters(text) < MIN_SEARCHABLE_CHARACTERS) return true;
   const { ratio, averageLength } = tokenStats(text);
   return ratio >= 0.65 && averageLength <= 2.5;
 }
 
-async function renderPageForOcr(page: any, bulk = false) {
+async function renderPageForOcr(page: any, bulk = false, highAccuracy = false) {
   const baseViewport = page.getViewport({ scale: 1 });
-  const pixelLimit = bulk ? BULK_OCR_MAX_PIXELS : OCR_MAX_PIXELS;
-  const targetScale = bulk ? BULK_OCR_TARGET_DPI_SCALE : OCR_TARGET_DPI_SCALE;
+  const pixelLimit = highAccuracy
+    ? HIGH_ACCURACY_OCR_MAX_PIXELS
+    : bulk ? BULK_OCR_MAX_PIXELS : OCR_MAX_PIXELS;
+  const targetScale = highAccuracy
+    ? HIGH_ACCURACY_OCR_TARGET_DPI_SCALE
+    : bulk ? BULK_OCR_TARGET_DPI_SCALE : OCR_TARGET_DPI_SCALE;
   const maxScale = Math.sqrt(
     pixelLimit / Math.max(1, baseViewport.width * baseViewport.height),
   );
@@ -301,7 +335,7 @@ async function renderPageForOcr(page: any, bulk = false) {
 
 /**
  * Extrai primeiro a camada de texto do PDF. Páginas sem texto suficiente são
- * renderizadas a aproximadamente 300 DPI e reconhecidas no próprio navegador,
+ * renderizadas entre 330 e 400 DPI e reconhecidas no próprio navegador,
  * mantendo o backend livre de executáveis e processamento pesado.
  */
 export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback, options: PdfTextOptions = {}) {
@@ -354,7 +388,7 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
         progress: 0,
       });
 
-      const canvas = await renderPageForOcr(page, options.bulk === true);
+      const canvas = await renderPageForOcr(page, options.bulk === true, forceOcr);
       let recognized: any;
       if (options.bulk) {
         const scheduler = await getBulkOcrScheduler();

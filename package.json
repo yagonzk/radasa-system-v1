@@ -19,7 +19,8 @@
     "postinstall": "prisma generate",
     "predev": "prisma generate",
     "pedagios:atualizar": "node scripts/atualizar-pedagios-nacionais.mjs",
-    "vercel-build": "prisma generate && vite build --configLoader runner"
+    "vercel-build": "prisma generate && vite build --configLoader runner",
+    "test:romaneio-v8": "tsx scripts/test-romaneio-v8-regression.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

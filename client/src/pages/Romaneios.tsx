@@ -33,7 +33,7 @@ import {
   shouldTryOcrFallback,
 } from "@/lib/romaneioImportQuality";
 
-const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.08.14";
+const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.01";
 import { formatBRL, formatDate } from "@/lib/exportUtils";
 import {
   Check,
@@ -383,24 +383,58 @@ export default function Romaneios() {
       .toUpperCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 7);
+      .replace(/[^A-Z0-9]/g, "");
 
   const formatPlate = (value?: string | null) => {
-    const normalized = normalizePlate(value);
+    const normalized = normalizePlate(value).slice(0, 7);
     if (!normalized) return "";
     if (normalized.length <= 3) return normalized;
     return `${normalized.slice(0, 3)}-${normalized.slice(3)}`;
   };
 
-  const findRegisteredVehicleByPlate = (plate?: string | null, sourceVehicles: Veiculo[] = veiculos) => {
-    const normalized = normalizePlate(plate);
-    if (normalized.length !== 7) return undefined;
+  const plateEditDistance = (left: string, right: string) => {
+    const rows = left.length + 1;
+    const cols = right.length + 1;
+    const matrix = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+    for (let row = 0; row < rows; row += 1) matrix[row][0] = row;
+    for (let col = 0; col < cols; col += 1) matrix[0][col] = col;
 
-    // A leitura do PDF pode vir sem hífen (RAU3I63), mas o vínculo sempre é
-    // feito com um veículo existente. A comparação ignora a pontuação e, ao
-    // preencher/salvar o romaneio, a placa cadastrada é formatada como XXX-XXXX.
-    return sourceVehicles.find((veiculo) => normalizePlate(veiculo.placa) === normalized);
+    for (let row = 1; row < rows; row += 1) {
+      for (let col = 1; col < cols; col += 1) {
+        const substitution = left[row - 1] === right[col - 1] ? 0 : 1;
+        matrix[row][col] = Math.min(
+          matrix[row - 1][col] + 1,
+          matrix[row][col - 1] + 1,
+          matrix[row - 1][col - 1] + substitution,
+        );
+      }
+    }
+    return matrix[left.length][right.length];
+  };
+
+  const findRegisteredVehicleByPlate = (plate?: string | null, sourceVehicles: Veiculo[] = veiculos) => {
+    const imported = normalizePlate(plate);
+    if (imported.length < 6 || imported.length > 8) return undefined;
+
+    const registered = sourceVehicles
+      .map((veiculo) => ({ veiculo, plate: normalizePlate(veiculo.placa) }))
+      .filter((entry) => entry.plate.length === 7);
+
+    // Primeiro exige correspondência exata. Se o OCR confundiu 1/2 caracteres
+    // (ex.: I/T, 3/S) ou inseriu um glifo, só aceitamos correção quando existe
+    // UMA placa cadastrada inequivocamente mais próxima. O valor salvo continua
+    // sendo sempre a placa real já cadastrada no sistema.
+    const exact = registered.find((entry) => entry.plate === imported);
+    if (exact) return exact.veiculo;
+
+    const ranked = registered
+      .map((entry) => ({ ...entry, distance: plateEditDistance(imported, entry.plate) }))
+      .filter((entry) => entry.distance <= 2)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (!ranked.length) return undefined;
+    if (ranked.length > 1 && ranked[0].distance === ranked[1].distance) return undefined;
+    return ranked[0].veiculo;
   };
 
   const bindImportedVehicle = (result: PdfResponse, sourceVehicles: Veiculo[] = veiculos) => {
@@ -716,14 +750,14 @@ export default function Romaneios() {
       // Não esperamos a leitura digital zerar para tentar outra estratégia.
       // Se o resultado estiver estruturalmente suspeito (linha provável perdida,
       // cálculo incoerente, total divergente, placa/transportadora ausente),
-      // fazemos OCR visual em 300 DPI, interpretamos de novo e comparamos as
+      // fazemos OCR visual em alta resolução, interpretamos de novo e comparamos as
       // duas respostas. A leitura mais consistente vence.
       if (shouldTryOcrFallback(digitalResponse.data, digitalText)) {
         const digitalQuality = analyzeRomaneioReadQuality(digitalResponse.data, digitalText);
         setImportProgress(
           digitalQuality.reasons.length
-            ? `Conferindo leitura (${digitalQuality.reasons[0]}). Tentando OCR em 300 DPI...`
-            : "Conferindo leitura. Tentando OCR em 300 DPI...",
+            ? `Conferindo leitura (${digitalQuality.reasons[0]}). Tentando OCR em alta resolução...`
+            : "Conferindo leitura. Tentando OCR em alta resolução...",
         );
 
         try {
@@ -815,7 +849,7 @@ export default function Romaneios() {
       const texts = new Array<string>(files.length);
       const initialResults = new Array<PdfResponse | undefined>(files.length);
       const extractionErrors = new Map<number, string>();
-      const EXTRACT_CONCURRENCY = 6;
+      const EXTRACT_CONCURRENCY = 4;
       let nextIndex = 0;
       let extractedCount = 0;
 
