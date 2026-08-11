@@ -27,6 +27,7 @@ import {
 } from "@/lib/store";
 import { api } from "@/lib/api";
 import { extrairTextoPdf, type PdfTextProgress } from "@/lib/pdfText";
+import { isVasilhameName, orderRomaneioItemsByClient } from "@/lib/romaneioGrouping";
 const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.07";
 import { formatBRL, formatDate } from "@/lib/exportUtils";
 import {
@@ -198,7 +199,7 @@ function refreshReviewDocument(result: PdfResponse): PdfResponse {
   const romaneios = Array.from(new Set(result.sugestoes.produtos.map(({ produto }) => produto.romaneio).filter(Boolean)));
   const notasFiscais = Array.from(new Set(result.sugestoes.produtos.map(({ produto }) => produto.notaFiscal).filter(Boolean)));
   const valorTotal = result.sugestoes.produtos.reduce((sum, { produto }) => {
-    const isVasilhame = /VASI.*(?:LH|LE).*AME/i.test(produto.descricao.replace(/\s+/g, ""));
+    const isVasilhame = isVasilhameName(produto.descricao);
     return sum + (isVasilhame ? 0 : Number(produto.valorTotal || 0));
   }, 0);
 
@@ -681,9 +682,15 @@ export default function Romaneios() {
     const first = entries[0];
     if (!first) throw new Error("O arquivo não possui itens vÃ¡lidos para cadastrar.");
 
+    const orderedEntries = orderRomaneioItemsByClient(
+      entries,
+      (entry) => entry.cliente.id || entry.produto.clienteCodigo || entry.produto.clienteNome,
+      (entry) => entry.produto.descricao,
+    ).map(({ item }) => item);
+
     const pdfUrl = await fileToDataUrl(file);
-    const itens: RomaneioItem[] = entries.map(({ produto, cliente, cadastro }, index) => {
-      const ehVasilhame = /VASI.*(?:LH|LE).*AME/i.test(produto.descricao.replace(/\s+/g, ""));
+    const itens: RomaneioItem[] = orderedEntries.map(({ produto, cliente, cadastro }) => {
+      const ehVasilhame = isVasilhameName(produto.descricao);
       return {
         produtoId: cadastro.id,
         clienteId: cliente.id,
@@ -996,6 +1003,11 @@ export default function Romaneios() {
           const entries = entry.result.sugestoes.produtos;
           const first = entries[0];
           if (!first) throw new Error("O arquivo não possui itens válidos para cadastrar.");
+          const orderedEntries = orderRomaneioItemsByClient(
+            entries,
+            (item) => item.cliente.id || item.produto.clienteCodigo || item.produto.clienteNome,
+            (item) => item.produto.descricao,
+          ).map(({ item }) => item);
           const documento = entry.result.documento;
           const registeredVehicle = findRegisteredVehicleByPlate(documento.placaVeiculo);
           if (!registeredVehicle) throw new Error("A placa lida não corresponde a um veículo cadastrado.");
@@ -1012,8 +1024,8 @@ export default function Romaneios() {
             modeloVeiculo: registeredVehicle.modelo ?? "",
             romaneios: documento.romaneios.join(", "),
             notasFiscais: documento.notasFiscais.join(", "),
-            produtos: entries.map(({ produto, cliente, cadastro }) => {
-              const ehVasilhame = /VASI.*(?:LH|LE).*AME/i.test(produto.descricao.replace(/\s+/g, ""));
+            produtos: orderedEntries.map(({ produto, cliente, cadastro }) => {
+              const ehVasilhame = isVasilhameName(produto.descricao);
               return {
                 produtoId: cadastro.id,
                 clienteId: cliente.id,
@@ -1133,7 +1145,12 @@ export default function Romaneios() {
   const saveManual = async () => {
     if (!manual.data) return toast.error("Informe a data do romaneio.");
     if (!manual.itens.length) return toast.error("Adicione pelo menos um item.");
-    const first = manual.itens[0];
+    const orderedManualItems = orderRomaneioItemsByClient(
+      manual.itens,
+      (item) => item.clienteId,
+      (item) => produtoById(item.produtoId)?.nome ?? "",
+    ).map(({ item }) => item);
+    const first = orderedManualItems[0];
     const clienteId = first.clienteId;
     if (!clienteId) return toast.error("Informe o cliente do primeiro item.");
     const metadata = {
@@ -1142,15 +1159,15 @@ export default function Romaneios() {
       veiculoCodigo: manual.veiculoCodigo,
       placaVeiculo: manual.placa,
       modeloVeiculo: manual.modelo,
-      romaneios: Array.from(new Set(manual.itens.map((item) => item.romaneio).filter(Boolean))).join(", "),
-      notasFiscais: Array.from(new Set(manual.itens.map((item) => item.notaFiscal).filter(Boolean))).join(", "),
+      romaneios: Array.from(new Set(orderedManualItems.map((item) => item.romaneio).filter(Boolean))).join(", "),
+      notasFiscais: Array.from(new Set(orderedManualItems.map((item) => item.notaFiscal).filter(Boolean))).join(", "),
     };
     setSaving(true);
     try {
       if (editing) {
-        await update(editing.id, clienteId, manual.data, manual.itens, first.tipoManifesto ?? "Bonificação - Lebrinha", editing.pdfUrl, metadata);
+        await update(editing.id, clienteId, manual.data, orderedManualItems, first.tipoManifesto ?? "Bonificação - Lebrinha", editing.pdfUrl, metadata);
       } else {
-        await create(clienteId, manual.data, manual.itens, first.tipoManifesto ?? "Bonificação - Lebrinha", undefined, metadata);
+        await create(clienteId, manual.data, orderedManualItems, first.tipoManifesto ?? "Bonificação - Lebrinha", undefined, metadata);
       }
       setManualOpen(false);
       setEditing(null);
@@ -1479,7 +1496,11 @@ export default function Romaneios() {
                     <tr><th className="px-3 py-2 text-left">Rom./Item</th><th className="px-3 py-2 text-left">Produto</th><th className="px-3 py-2 text-left">NF/Série</th><th className="px-3 py-2 text-right">Quantidade</th><th className="px-3 py-2 text-right">Valor unitÃ¡rio</th><th className="px-3 py-2 text-right">Valor total</th><th className="px-3 py-2 text-left">Cobrança</th></tr>
                   </thead>
                   <tbody>
-                    {inspecting.produtos.map((item, index) => {
+                    {orderRomaneioItemsByClient(
+                      inspecting.produtos,
+                      (item) => item.clienteId ?? inspecting.clienteId,
+                      (item) => produtoById(item.produtoId)?.nome ?? "",
+                    ).map(({ item, originalIndex: index }) => {
                       const cliente = clienteById(item.clienteId ?? inspecting.clienteId);
                       const produto = produtoById(item.produtoId);
                       return (
@@ -1705,8 +1726,12 @@ export default function Romaneios() {
               )}
 
               <div className="space-y-3">
-                {review.result.sugestoes.produtos.map(({ produto, cliente, cadastro }, index) => {
-                  const ehVasilhame = /VASI.*(?:LH|LE).*AME/i.test(produto.descricao.replace(/\s+/g, ""));
+                {orderRomaneioItemsByClient(
+                  review.result.sugestoes.produtos,
+                  (entry) => entry.cliente.id || entry.produto.clienteCodigo || entry.produto.clienteNome,
+                  (entry) => entry.produto.descricao,
+                ).map(({ item: { produto, cliente, cadastro }, originalIndex: index }, displayIndex) => {
+                  const ehVasilhame = isVasilhameName(produto.descricao);
                   const valorUnitario = ehVasilhame ? 0 : produto.valorUnitario;
                   const valorTotal = ehVasilhame ? 0 : produto.valorTotal;
 
@@ -1714,7 +1739,7 @@ export default function Romaneios() {
                     <div key={`${produto.romaneio}-${produto.blocoCliente ?? "sem-bloco"}-${produto.item}-${produto.codigo}-${index}`} className="rounded-xl border bg-muted/10 p-4 shadow-sm">
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-semibold">Item {index + 1}</p>
+                          <p className="font-semibold">Item {displayIndex + 1}</p>
                           <p className="text-xs text-muted-foreground">Cód. lido {produto.codigo} · Item do PDF {produto.item}</p>
                         </div>
                         <Button
@@ -1981,7 +2006,11 @@ export default function Romaneios() {
             <Button type="button" variant="outline" onClick={addDraft}><Plus className="mr-2 h-4 w-4" />{draft.clienteId ? "Adicionar outro produto para este cliente" : "Adicionar produto"}</Button>
           </div>
           <div className="mt-4 space-y-2">
-            {manual.itens.map((item, index) => (
+            {orderRomaneioItemsByClient(
+              manual.itens,
+              (item) => item.clienteId,
+              (item) => produtoById(item.produtoId)?.nome ?? "",
+            ).map(({ item, originalIndex: index }) => (
               <div key={index} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
                 <div><p className="font-medium">{clienteById(item.clienteId)?.nomeFantasia} - {produtoById(item.produtoId)?.nome}</p><p className="text-xs text-muted-foreground">Romaneio {item.romaneio || "—"} · NF {item.notaFiscal || "—"}/{item.serieNf || "—"} · {item.quantidade.toLocaleString("pt-BR")} × {formatBRL(item.valorUnitario)} = {formatBRL(item.valorTotal)}</p></div>
                 <div className="flex items-center gap-2"><TypeBadge type={item.tipoManifesto} /><Button size="icon" variant="ghost" onClick={() => setManual((c) => ({ ...c, itens: c.itens.filter((_, i) => i !== index) }))}><X className="h-4 w-4 text-destructive" /></Button></div>
