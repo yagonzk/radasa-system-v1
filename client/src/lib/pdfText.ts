@@ -30,14 +30,15 @@ export type PdfTextOptions = {
 const MIN_SEARCHABLE_CHARACTERS = 120;
 const OCR_TARGET_DPI_SCALE = 330 / 72;
 const BULK_OCR_TARGET_DPI_SCALE = 330 / 72;
-const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 600 / 72;
+const HIGH_ACCURACY_OCR_TARGET_DPI_SCALE = 500 / 72;
 const OCR_MAX_PIXELS = 11_000_000;
 const BULK_OCR_MAX_PIXELS = 11_000_000;
-const HIGH_ACCURACY_OCR_MAX_PIXELS = 14_000_000;
-const BULK_OCR_WORKERS = Math.max(1, Math.min(2, Math.floor((navigator.hardwareConcurrency || 8) / 2)));
+const HIGH_ACCURACY_OCR_MAX_PIXELS = 26_000_000;
+const BULK_OCR_WORKERS = 1;
 
 const DIGITAL_TEXT_MARKER = "[[RADASA_DIGITAL_TEXT]]";
 const OCR_TEXT_MARKER = "[[RADASA_OCR_TEXT]]";
+const OCR_PRIMARY_MARKER = "[[RADASA_OCR_PRIMARY]]";
 
 type TesseractModule = typeof import("tesseract.js");
 type OcrWorker = Awaited<ReturnType<TesseractModule["createWorker"]>>;
@@ -70,7 +71,7 @@ async function getOcrWorker() {
         },
       });
       await worker.setParameters({
-        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        tessedit_pageseg_mode: (PSM as any).SINGLE_COLUMN ?? "4",
         preserve_interword_spaces: "1",
       });
       return worker;
@@ -96,7 +97,7 @@ async function getBulkOcrScheduler() {
         Array.from({ length: BULK_OCR_WORKERS }, async () => {
           const worker = await createWorker("por", 1);
           await worker.setParameters({
-            tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+            tessedit_pageseg_mode: (PSM as any).SINGLE_COLUMN ?? "4",
             preserve_interword_spaces: "1",
           });
           scheduler.addWorker(worker);
@@ -314,45 +315,121 @@ function needsOcr(text: string) {
   return ratio >= 0.65 && averageLength <= 2.5;
 }
 
+type OcrContentBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+async function detectPageContentBounds(page: any): Promise<OcrContentBounds> {
+  // Primeiro renderizamos uma prévia leve da PÁGINA INTEIRA e localizamos
+  // automaticamente todos os pixels impressos. Assim não dependemos de um
+  // corte fixo (65%, 70% etc.): qualquer conteúdo real da página entra no OCR.
+  const previewScale = 1.5;
+  const viewport = page.getViewport({ scale: previewScale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return { left: 0, top: 0, right: 1, bottom: 1 };
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, canvasContext: context, viewport }).promise;
+
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const data = image.data;
+  const step = 2;
+  let minX = canvas.width;
+  let minY = canvas.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < canvas.height; y += step) {
+    for (let x = 0; x < canvas.width; x += step) {
+      const offset = (y * canvas.width + x) * 4;
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      // 245 preserva letras finas/cinzas e ignora o fundo branco.
+      if (r < 245 || g < 245 || b < 245) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  const previewWidth = canvas.width;
+  const previewHeight = canvas.height;
+  canvas.width = 1;
+  canvas.height = 1;
+
+  if (maxX < 0 || maxY < 0) return { left: 0, top: 0, right: 1, bottom: 1 };
+
+  const marginX = Math.max(8, Math.round((maxX - minX + 1) * 0.025));
+  const marginY = Math.max(8, Math.round((maxY - minY + 1) * 0.04));
+  return {
+    left: Math.max(0, minX - marginX) / previewWidth,
+    top: Math.max(0, minY - marginY) / previewHeight,
+    right: Math.min(previewWidth, maxX + marginX) / previewWidth,
+    bottom: Math.min(previewHeight, maxY + marginY) / previewHeight,
+  };
+}
+
 async function renderPageForOcr(
   page: any,
   bulk = false,
   highAccuracy = false,
-  cropTopFraction = 1,
+  _cropTopFraction = 1,
 ) {
   const baseViewport = page.getViewport({ scale: 1 });
-  const safeCrop = Math.min(1, Math.max(0.2, cropTopFraction));
+  const bounds = highAccuracy
+    ? await detectPageContentBounds(page)
+    : { left: 0, top: 0, right: 1, bottom: 1 };
+
+  const widthFraction = Math.max(0.05, bounds.right - bounds.left);
+  const heightFraction = Math.max(0.05, bounds.bottom - bounds.top);
   const pixelLimit = highAccuracy
     ? HIGH_ACCURACY_OCR_MAX_PIXELS
     : bulk ? BULK_OCR_MAX_PIXELS : OCR_MAX_PIXELS;
   const targetScale = highAccuracy
     ? HIGH_ACCURACY_OCR_TARGET_DPI_SCALE
     : bulk ? BULK_OCR_TARGET_DPI_SCALE : OCR_TARGET_DPI_SCALE;
-  const maxScale = Math.sqrt(
-    pixelLimit / Math.max(1, baseViewport.width * baseViewport.height * safeCrop),
-  );
+  const croppedBasePixels = Math.max(1, baseViewport.width * baseViewport.height * widthFraction * heightFraction);
+  const maxScale = Math.sqrt(pixelLimit / croppedBasePixels);
   const scale = Math.min(targetScale, maxScale);
   const viewport = page.getViewport({ scale });
+
+  const cropLeft = Math.floor(viewport.width * bounds.left);
+  const cropTop = Math.floor(viewport.height * bounds.top);
+  const cropRight = Math.ceil(viewport.width * bounds.right);
+  const cropBottom = Math.ceil(viewport.height * bounds.bottom);
+
   const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height * safeCrop);
+  canvas.width = Math.max(1, cropRight - cropLeft);
+  canvas.height = Math.max(1, cropBottom - cropTop);
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("O navegador não conseguiu preparar o PDF para OCR.");
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  // O canvas menor funciona como clip natural. Nos romaneios SIGA o relatório
-  // fica no topo da página; remover a grande área branca permite OCR ~600 DPI
-  // sem estourar memória e melhora muito números pequenos/códigos.
-  await page.render({ canvas, canvasContext: context, viewport }).promise;
+  await page.render({
+    canvas,
+    canvasContext: context,
+    viewport,
+    transform: [1, 0, 0, 1, -cropLeft, -cropTop],
+  }).promise;
   return canvas;
 }
 
 /**
- * Extrai primeiro a camada de texto do PDF. Páginas sem texto suficiente são
- * renderizadas entre 330 e 400 DPI e reconhecidas no próprio navegador,
- * mantendo o backend livre de executáveis e processamento pesado.
+ * Extrai texto do PDF. Para Romaneios com `forceOcr`, a página inteira é
+ * rasterizada e todo o conteúdo impresso é reconhecido em OCR de alta resolução
+ * antes de o backend receber qualquer dado para interpretação.
  */
 export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback, options: PdfTextOptions = {}) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -413,10 +490,7 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
         page,
         options.bulk === true,
         highAccuracy,
-        // 40% cortava as últimas linhas de romaneios mais cheios (como o
-        // FRETE 3). 65% ainda permite OCR em alta resolução dentro do limite
-        // de pixels e inclui todos os itens impressos antes do RESUMO.
-        isSiga ? 0.65 : 1,
+        1,
       );
       let recognized: any;
       if (options.bulk) {
@@ -442,7 +516,13 @@ export async function extrairTextoPdf(file: File, onProgress?: ProgressCallback,
       // das fontes isoladamente é suficiente. Enviamos ambas, marcadas, para o
       // backend fazer a fusão linha-a-linha. Para outros PDFs mantemos o fluxo
       // simples anterior.
-      if (isSiga && searchableCharacters(digitalText) > 0) {
+      if (forceOcr) {
+        // Modo OCR-first dos Romaneios: o PDF inteiro foi rasterizado em alta
+        // resolução ANTES de qualquer interpretação. Não misturamos a camada
+        // digital incompleta com as linhas OCR, porque essa fusão podia deslocar
+        // colunas e gerar quantidades/preços absurdos.
+        pages.push(`${OCR_PRIMARY_MARKER}\n${ocrText}`);
+      } else if (isSiga && searchableCharacters(digitalText) > 0) {
         pages.push(
           `${DIGITAL_TEXT_MARKER}\n${digitalText}\n${OCR_TEXT_MARKER}\n${ocrText}`,
         );

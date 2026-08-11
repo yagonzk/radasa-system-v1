@@ -27,13 +27,7 @@ import {
 } from "@/lib/store";
 import { api } from "@/lib/api";
 import { extrairTextoPdf, type PdfTextProgress } from "@/lib/pdfText";
-import {
-  analyzeRomaneioReadQuality,
-  chooseBestRomaneioRead,
-  shouldTryOcrFallback,
-} from "@/lib/romaneioImportQuality";
-
-const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.06";
+const EXPECTED_ROMANEIO_PARSER_VERSION = "2026.08.11.07";
 import { formatBRL, formatDate } from "@/lib/exportUtils";
 import {
   Check,
@@ -271,9 +265,9 @@ function TypeBadge({ type }: { type?: TipoManifesto }) {
 }
 
 function pdfProgressLabel(progress: PdfTextProgress) {
-  const page = `pÃ¡gina ${progress.page}/${progress.totalPages}`;
-  if (progress.stage === "extracting") return `Lendo ${page}...`;
-  if (progress.stage === "ocr-loading") return `PDF digitalizado: preparando OCR da ${page}...`;
+  const page = `página ${progress.page}/${progress.totalPages}`;
+  if (progress.stage === "extracting") return `Preparando ${page} para OCR...`;
+  if (progress.stage === "ocr-loading") return `Convertendo ${page} para OCR em alta resolução...`;
   return `OCR da ${page}: ${Math.round(progress.progress * 100)}%`;
 }
 
@@ -738,54 +732,17 @@ export default function Romaneios() {
         setImportProgress(pdfProgressLabel(progress));
       };
 
-      // O backend recebe somente TEXTO. A camada digital é
-      // extraída no navegador via PDF.js; scans/imagens caem no Tesseract local.
-      // Isso evita empacotar pdf-parse/pdf.js de Node dentro do Worker.
-      const digitalText = await extrairTextoPdf(file, progressCallback);
-      const digitalResponse = await api.post<PdfResponse>(
+      // OCR-FIRST: todo romaneio é rasterizado e reconhecido visualmente em
+      // alta resolução ANTES de qualquer interpretação. A camada de texto
+      // parcial do PDF não participa da leitura dos itens/valores.
+      setImportProgress("Convertendo o PDF inteiro para OCR em alta resolução...");
+      const ocrText = await extrairTextoPdf(file, progressCallback, { forceOcr: true });
+      const response = await api.post<PdfResponse>(
         "/manifestos/interpretar-texto-pdf",
-        { texto: digitalText },
-        { timeout: 120_000 },
+        { texto: ocrText },
+        { timeout: 240_000 },
       );
-
-      let response = digitalResponse;
-      let selectedSource: "digital" | "ocr" = "digital";
-
-      // Não esperamos a leitura digital zerar para tentar outra estratégia.
-      // Se o resultado estiver estruturalmente suspeito (linha provável perdida,
-      // cálculo incoerente, total divergente, placa/transportadora ausente),
-      // fazemos OCR visual em alta resolução, interpretamos de novo e comparamos as
-      // duas respostas. A leitura mais consistente vence.
-      if (shouldTryOcrFallback(digitalResponse.data, digitalText)) {
-        const digitalQuality = analyzeRomaneioReadQuality(digitalResponse.data, digitalText);
-        setImportProgress(
-          digitalQuality.reasons.length
-            ? `Conferindo leitura (${digitalQuality.reasons[0]}). Tentando OCR em alta resolução...`
-            : "Conferindo leitura. Tentando OCR em alta resolução...",
-        );
-
-        try {
-          const ocrText = await extrairTextoPdf(file, progressCallback, { forceOcr: true });
-          const ocrResponse = await api.post<PdfResponse>(
-            "/manifestos/interpretar-texto-pdf",
-            { texto: ocrText },
-            { timeout: 180_000 },
-          );
-          const best = chooseBestRomaneioRead(
-            digitalResponse.data,
-            digitalText,
-            ocrResponse.data,
-            ocrText,
-          );
-          response = { ...digitalResponse, data: best.result };
-          selectedSource = best.source;
-        } catch (ocrError) {
-          // Se a leitura digital já produziu itens válidos, não descartamos o
-          // documento só porque a tentativa complementar de OCR falhou.
-          if (!digitalResponse.data.sugestoes.produtos.length) throw ocrError;
-          response = digitalResponse;
-        }
-      }
+      const selectedSource: "ocr" = "ocr";
 
       const [vehiclesResponse] = await Promise.all([
         api.get<Veiculo[]>("/veiculos"),
@@ -847,13 +804,12 @@ export default function Romaneios() {
     const processed: BulkImportEntry[] = files.map((file) => ({ file }));
 
     try {
-      // Extração local com concorrência controlada. PDFs digitais usam apenas
-      // PDF.js (rápido); OCR só é acionado pelo extrator quando realmente
-      // necessário. Nenhum PDF binário é enviado ao backend.
+      // OCR completo e sequencial para priorizar precisão e limitar memória.
+      // Cada PDF é rasterizado antes da interpretação; nenhum PDF binário é
+      // enviado ao backend.
       const texts = new Array<string>(files.length);
-      const initialResults = new Array<PdfResponse | undefined>(files.length);
       const extractionErrors = new Map<number, string>();
-      const EXTRACT_CONCURRENCY = 4;
+      const EXTRACT_CONCURRENCY = 1;
       let nextIndex = 0;
       let extractedCount = 0;
 
@@ -862,12 +818,12 @@ export default function Romaneios() {
           const index = nextIndex++;
           if (index >= files.length) return;
           try {
-            texts[index] = await extrairTextoPdf(files[index], undefined, { bulk: true });
+            texts[index] = await extrairTextoPdf(files[index], undefined, { bulk: true, forceOcr: true });
           } catch (error: any) {
             extractionErrors.set(index, error?.message ?? "Falha ao ler o PDF.");
           } finally {
             extractedCount += 1;
-            setBulkImportProgress(`Lendo PDFs no navegador: ${extractedCount}/${files.length}...`);
+            setBulkImportProgress(`Convertendo PDFs para OCR: ${extractedCount}/${files.length}...`);
           }
         }
       };
@@ -914,12 +870,8 @@ export default function Romaneios() {
                 error: `Backend desatualizado: servidor ${result.documento.parserVersion}; esperado ${EXPECTED_ROMANEIO_PARSER_VERSION}.`,
               };
             } else {
-              initialResults[fileIndex] = result;
-              if (shouldTryOcrFallback(result, texts[fileIndex])) {
-                // Mantemos o resultado inicial para comparar depois. Se ele já
-                // possui itens, uma eventual falha do OCR não fará o arquivo
-                // ser perdido.
-                processed[fileIndex] = { file: files[fileIndex], error: "__RETRY_OCR__" };
+              if (!result.sugestoes.produtos.length) {
+                processed[fileIndex] = { file: files[fileIndex], error: "Nenhuma linha foi identificada após OCR completo." };
               } else {
                 processed[fileIndex] = {
                   file: files[fileIndex],
@@ -938,64 +890,8 @@ export default function Romaneios() {
         interpretedCount += indexes.length;
       }
 
-      // Segunda leitura nos PDFs cujo primeiro resultado ficou suspeito.
-      // Não precisa zerar: linhas perdidas, cálculo/total incoerente ou cabeçalho
-      // ausente também acionam OCR. Depois comparamos e preservamos o melhor.
-      const retryIndexes = processed
-        .map((entry, index) => entry.error === "__RETRY_OCR__" ? index : -1)
-        .filter((index) => index >= 0);
-
-      for (let retryPosition = 0; retryPosition < retryIndexes.length; retryPosition += 1) {
-        const fileIndex = retryIndexes[retryPosition];
-        const file = files[fileIndex];
-        try {
-          setBulkImportProgress(`OCR de segurança: ${retryPosition + 1}/${retryIndexes.length}...`);
-          const ocrText = await extrairTextoPdf(file, undefined, { bulk: true, forceOcr: true });
-          const retryResponse = await api.post<PdfResponse>(
-            "/manifestos/interpretar-texto-pdf",
-            { texto: ocrText },
-            { timeout: 180_000 },
-          );
-          const initial = initialResults[fileIndex];
-          if (initial) {
-            const best = chooseBestRomaneioRead(
-              initial,
-              texts[fileIndex],
-              retryResponse.data,
-              ocrText,
-            );
-            if (best.result.sugestoes.produtos.length) {
-              processed[fileIndex] = {
-                file,
-                result: bindImportedVehicle(best.result, registeredVehicles).result,
-              };
-            } else {
-              processed[fileIndex] = { file, error: "Nenhuma linha foi identificada nem após OCR." };
-            }
-          } else if (retryResponse.data.sugestoes.produtos.length) {
-            processed[fileIndex] = {
-              file,
-              result: bindImportedVehicle(retryResponse.data, registeredVehicles).result,
-            };
-          } else {
-            processed[fileIndex] = { file, error: "Nenhuma linha foi identificada nem após OCR." };
-          }
-        } catch (error: any) {
-          const initial = initialResults[fileIndex];
-          if (initial?.sugestoes.produtos.length) {
-            // OCR complementar falhou, mas a primeira leitura era utilizável.
-            processed[fileIndex] = {
-              file,
-              result: bindImportedVehicle(initial, registeredVehicles).result,
-            };
-          } else {
-            processed[fileIndex] = {
-              file,
-              error: error?.response?.data?.message ?? error?.message ?? "Falha no OCR de segurança.",
-            };
-          }
-        }
-      }
+      // Todos os arquivos já passaram pelo OCR completo de alta resolução na
+      // primeira etapa; não existe segunda leitura híbrida/digital.
 
       await Promise.all([refreshClientes(), refreshProdutos(), refreshVeiculos()]);
       setBulkReview(processed);

@@ -1,6 +1,6 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
-import { Truck, Users, LayoutDashboard, Moon, Sun, ClipboardList, HandCoins, LogOut, KeyRound, ScrollText, Fuel, CircleDotDashed, Boxes, FileBadge2, ChevronDown, ChevronRight, FilePlus2, History, UserRound, Settings2, BadgeDollarSign } from "lucide-react";
+import { Truck, Users, LayoutDashboard, Moon, Sun, ClipboardList, HandCoins, LogOut, KeyRound, ScrollText, Fuel, CircleDotDashed, Boxes, FileBadge2, ChevronDown, ChevronRight, FilePlus2, History, UserRound, Settings2, BadgeDollarSign, ScanText } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link, useLocation } from "wouter";
 import { type ReactNode, useState } from "react";
@@ -43,6 +43,12 @@ const navItems: NavItem[] = [
     href: "/romaneios",
     icon: <ClipboardList className="h-[18px] w-[18px]" />,
     matchPaths: ["/romaneios", "/manifestos"],
+  },
+  {
+    label: "OCR",
+    href: "/ocr",
+    icon: <ScanText className="h-[18px] w-[18px]" />,
+    matchPaths: ["/ocr"],
   },
   {
     label: "Comissões",

@@ -1,6 +1,8 @@
 import { prisma } from "../lib/prisma.js";
 
-export const ROMANEIO_PARSER_VERSION = "2026.08.11.06";
+export const ROMANEIO_PARSER_VERSION = "2026.08.11.07";
+
+const RADASA_OCR_PRIMARY_MARKER = "[[RADASA_OCR_PRIMARY]]";
 
 export type TipoRomaneioPdf =
   | "Bonificação - Lebrinha"
@@ -659,6 +661,21 @@ function repairOcrRomaneioNumbers(produtos: RomaneioPdfProduto[]) {
 }
 
 function repairOcrProductCodesByFamily(items: RomaneioPdfProduto[]) {
+  // Primeiro corrige códigos OCR com um caractere extra usando outros códigos
+  // de 5 dígitos já lidos no mesmo documento. Ex.: 0030B8 -> 003088 contém
+  // 00308; O0O308 -> 000308 também contém 00308.
+  const trustedFiveDigitCodes = Array.from(new Set(
+    items
+      .map((item) => repairOcrNumericToken(item.codigo).replace(/\D/g, ""))
+      .filter((code) => /^\d{5}$/.test(code)),
+  ));
+  for (const item of items) {
+    const current = repairOcrNumericToken(item.codigo).replace(/\D/g, "");
+    if (current.length <= 5 || current.length > 8 || !trustedFiveDigitCodes.length) continue;
+    const matches = trustedFiveDigitCodes.filter((trusted) => current.includes(trusted));
+    if (matches.length === 1) item.codigo = matches[0];
+  }
+
   const byFamily = new Map<string, RomaneioPdfProduto[]>();
   for (const item of items) {
     const family = hybridProductFamily(item.descricao);
@@ -1076,19 +1093,16 @@ function parseLooseOcrClient(line: string): RomaneioPdfCliente | null {
   if (!match) return null;
 
   const rawCode = match[1].replace(/\s+/g, "");
-  const codeCandidate = rawCode.match(/([A-Z0-9]{4,12})\s*\/\s*([A-Z0-9]{1,3})/i);
+  const codeCandidate = rawCode.match(/(.{4,18})\/\s*(.{1,5})/i);
   let codigo = "";
   if (codeCandidate) {
+    // Aceita ruídos visuais dentro do código (ex.: 001]J833/01). O campo é
+    // numérico no SIGA, então somente aqui podemos eliminar/reparar letras sem
+    // risco de alterar o nome do cliente.
     const left = repairOcrNumericToken(codeCandidate[1]).replace(/\D/g, "");
     const right = repairOcrNumericToken(codeCandidate[2]).replace(/\D/g, "");
     if (left.length >= 4 && right.length >= 1) {
-      // Nos romaneios SIGA deste cadastro, o código do cliente ocupa 6 dígitos
-      // antes da barra. OCR às vezes cola ruído da coluna ao lado
-      // ("09367929/01"). Mantemos os 6 primeiros quando houver sobra.
-      const normalizedLeft = left.length > 6 ? left.slice(0, 6) : left;
-      // O sufixo da filial possui 2 dígitos. Se o OCR anexar um caractere
-      // espúrio (ex.: "01i" -> "011"), os DOIS PRIMEIROS dígitos são os que
-      // correspondem à posição impressa no relatório.
+      const normalizedLeft = left.length > 6 ? left.slice(-6) : left;
       codigo = `${normalizedLeft}/${right.padEnd(2, "0").slice(0, 2)}`;
     }
   }
@@ -1163,15 +1177,18 @@ function parseLooseOcrProductLine(
 
   let notaFiscal = "";
   let serie = "";
-  const nfMatch = afterQuantity.match(/([A-Z0-9§|]{4,14})\s*\/\s*([A-Z0-9]{3,4})\s*$/i);
+  const nfMatch =
+    afterQuantity.match(/([0-9OQILDSBGTZ]{5,9})\s*\/\s*([0-9OQILDSBGTZ]{3,4})\s*$/i) ??
+    afterQuantity.match(/([A-Z0-9§|]{4,14})\s*\/\s*([A-Z0-9]{3,4})\s*$/i);
   if (nfMatch) {
     const nfRaw = nfMatch[1];
     const nfDigits = repairOcrNumericToken(nfRaw).replace(/\D/g, "");
     const serieDigits = repairOcrNumericToken(nfMatch[2]).replace(/\D/g, "");
-    // No fluxo híbrido, só tratamos a NF do OCR como confiável quando o
-    // trecho já veio numérico. Se vier letras/símbolos, a camada digital ou a
-    // sequência das NFs é mais segura do que "adivinhar" caracteres.
-    if (/^\d{5,9}$/.test(nfRaw) && nfDigits.length >= 5) notaFiscal = nfDigits;
+    // No OCR completo podem aparecer 1 ou 2 caracteres espúrios colados à
+    // NF (ex.: "a060630"). Como este trecho está imediatamente antes de /SÉRIE,
+    // aceitamos a versão reparada desde que ainda tenha tamanho plausível.
+    const nfNoise = nfRaw.replace(/[0-9OQDIL|ZSBGT]/gi, "").length;
+    if (nfDigits.length >= 5 && nfDigits.length <= 9 && nfNoise <= 2) notaFiscal = nfDigits;
     if (serieDigits.length >= 2) serie = serieDigits.padStart(3, "0").slice(-3);
   }
 
@@ -1221,6 +1238,52 @@ function parseLooseOcrDocument(text: string) {
   }
 
   return { clientes, produtos };
+}
+
+function convertLooseOcrProducts(produtos: LooseOcrProduct[]): RomaneioPdfProduto[] {
+  return produtos.map((product) => {
+    const ehVasilhame = isVasilhameDescription(product.descricao);
+    let valorUnitario = ehVasilhame ? 0 : (product.valorUnitario ?? 0);
+    let valorTotal = ehVasilhame ? 0 : (product.valorTotal ?? 0);
+
+    if (!ehVasilhame && product.quantidade > 0) {
+      if (valorTotal > 0 && !(valorUnitario > 0)) {
+        valorUnitario = Math.round((valorTotal / product.quantidade) * 100) / 100;
+      } else if (!(valorTotal > 0) && valorUnitario > 0) {
+        valorTotal = Math.round(product.quantidade * valorUnitario * 100) / 100;
+      } else if (valorTotal > 0 && valorUnitario > 0) {
+        const expected = product.quantidade * valorUnitario;
+        const tolerance = Math.max(0.08, Math.abs(valorTotal) * 0.0025);
+        if (Math.abs(expected - valorTotal) > tolerance) {
+          // Em OCR-primary, quantidade e total são as colunas mais estáveis.
+          // Um unitário incoerente é reconstruído apenas quando fecha em centavos.
+          const inferredUnit = Math.round((valorTotal / product.quantidade) * 100) / 100;
+          if (Math.abs(product.quantidade * inferredUnit - valorTotal) <= tolerance) {
+            valorUnitario = inferredUnit;
+          }
+        }
+      }
+    }
+
+    const instrucaoCobranca = humanizeLooseInstruction(product.instrucaoCobranca, valorTotal);
+    return {
+      romaneio: product.romaneio,
+      data: product.data,
+      item: product.item,
+      codigo: product.codigo,
+      descricao: product.descricao,
+      quantidade: product.quantidade,
+      valorUnitario: ehVasilhame ? 0 : valorUnitario,
+      valorTotal: ehVasilhame ? 0 : valorTotal,
+      instrucaoCobranca,
+      notaFiscal: product.notaFiscal,
+      serie: product.serie,
+      tipoManifesto: inferTipo(instrucaoCobranca, ehVasilhame ? 0 : valorTotal),
+      clienteCodigo: product.cliente.codigo,
+      clienteNome: product.cliente.nome,
+      blocoCliente: product.blocoCliente,
+    };
+  });
 }
 
 function parseDigitalSupportRows(text: string): HybridSupportRow[] {
@@ -1343,6 +1406,53 @@ function findSupportForOcrProduct(product: LooseOcrProduct, rows: HybridSupportR
     if (!best || score > best.score) best = { row, score };
   }
   return best?.row ?? null;
+}
+
+function repairRepeatedVasilhameInvoices(items: RomaneioPdfProduto[]) {
+  const groups = new Map<string, RomaneioPdfProduto[]>();
+  for (const item of items) {
+    if (!isVasilhameDescription(item.descricao)) continue;
+    const key = [digits(item.clienteCodigo), item.romaneio, item.serie].join("|");
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const valid = group.map((item) => item.notaFiscal).filter((nf) => /^\d{6}$/.test(nf));
+    const unique = Array.from(new Set(valid));
+    if (unique.length !== 1) continue;
+    const trusted = unique[0];
+    for (const item of group) {
+      if (!/^\d{6}$/.test(item.notaFiscal)) item.notaFiscal = trusted;
+      else if (item.notaFiscal !== trusted && digitEditDistance(item.notaFiscal, trusted) <= 2) item.notaFiscal = trusted;
+    }
+  }
+}
+
+function repairSuspiciousInvoiceFromPrevious(items: RomaneioPdfProduto[]) {
+  let previous: RomaneioPdfProduto | null = null;
+  for (const item of items) {
+    const currentDigits = digits(item.notaFiscal);
+    if (previous && /^\d{6}$/.test(previous.notaFiscal) && currentDigits.length > 6 && currentDigits.length <= 9) {
+      const expected = String(Number(previous.notaFiscal) + 1).padStart(6, "0");
+      const matches = new Set<string>();
+      const choose = (start: number, built: string) => {
+        if (built.length === 6) {
+          if (built === expected) matches.add(built);
+          return;
+        }
+        const remainingNeeded = 6 - built.length;
+        for (let index = start; index <= currentDigits.length - remainingNeeded; index += 1) {
+          choose(index + 1, built + currentDigits[index]);
+        }
+      };
+      choose(0, "");
+      if (matches.size === 1) item.notaFiscal = expected;
+    }
+    if (/^\d{6}$/.test(item.notaFiscal)) previous = item;
+  }
 }
 
 function repairSequentialInvoiceNumbers(items: RomaneioPdfProduto[]) {
@@ -1503,8 +1613,10 @@ function parseHybridSigaDocument(rawText: string) {
 export function interpretarTextoManifestoPdf(
   rawText: string,
 ): RomaneioPdfInterpretado {
-  const text = normalizeOcrDigits(repairGlyphSpacedText(rawText.replace(/\r/g, "")));
-  if (!text.trim()) throw new Error("O PDF não possui texto pesquisável.");
+  const ocrPrimary = rawText.includes(RADASA_OCR_PRIMARY_MARKER);
+  const sourceText = rawText.replaceAll(RADASA_OCR_PRIMARY_MARKER, "");
+  const text = normalizeOcrDigits(repairGlyphSpacedText(sourceText.replace(/\r/g, "")));
+  if (!text.trim()) throw new Error("O PDF não possui texto legível após OCR.");
 
   // Alguns OCRs devolvem "CLIENTE:" colado no fim do item anterior.
   // Forçamos cada marcador CLIENTE a iniciar um novo trecho para impedir que
@@ -1586,7 +1698,7 @@ export function interpretarTextoManifestoPdf(
   }
 
   // Fallback totalmente independente da fragmentação do PDF.js/OCR.
-  const streamParsed = parseSigaCompactStream(rawText);
+  const streamParsed = parseSigaCompactStream(sourceText);
   for (const client of streamParsed.clientes) {
     if (!clientes.some((item) => digits(item.codigo) === digits(client.codigo))) {
       clientes.push(client);
@@ -1599,10 +1711,34 @@ export function interpretarTextoManifestoPdf(
     }
   }
 
+  // Quando o navegador marca OCR_PRIMARY, todo o PDF já foi convertido para
+  // imagem e reconhecido visualmente antes de chegar aqui. Nesse modo o parser
+  // OCR solto é a fonte autoritativa para CLIENTE + linha de produto + valores.
+  // Isso impede que uma camada digital incompleta desloque colunas e transforme
+  // 653 × 5,40 em números sem relação com a linha impressa.
+  if (ocrPrimary) {
+    const primary = parseLooseOcrDocument(sourceText);
+    if (primary.produtos.length > 0) {
+      clientes.splice(0, clientes.length);
+      for (const client of primary.clientes) {
+        if (!clientes.some((item) =>
+          (client.codigo && digits(item.codigo) === digits(client.codigo)) ||
+          normalize(item.nome) === normalize(client.nome)
+        )) {
+          clientes.push(client);
+        }
+      }
+      produtos.splice(0, produtos.length, ...convertLooseOcrProducts(primary.produtos));
+      avisos.push(`${primary.produtos.length} item(ns) lido(s) pelo OCR completo em alta resolução.`);
+    }
+  }
+
   // PDFs híbridos do SIGA podem ter CLIENTE/produto rasterizados e
   // quantidade/total/NF na camada textual. Nessa situação juntamos as duas
   // fontes em vez de exigir que uma única extração esteja perfeita.
-  const hybridParsed = parseHybridSigaDocument(rawText);
+  const hybridParsed = ocrPrimary
+    ? { clientes: [] as RomaneioPdfCliente[], produtos: [] as RomaneioPdfProduto[] }
+    : parseHybridSigaDocument(rawText);
   // Quando o cliente envia as duas fontes marcadas (digital + OCR), o parser
   // híbrido já fez o pareamento e a validação aritmética. Misturar novamente
   // esses itens com o parser genérico reintroduzia duplicatas e linhas
@@ -1626,14 +1762,26 @@ export function interpretarTextoManifestoPdf(
   // -> 175190). Isso é especialmente útil no OCR de páginas digitalizadas.
   repairOcrRomaneioNumbers(produtos);
   repairOcrProductCodesByFamily(produtos);
+  repairRepeatedVasilhameInvoices(produtos);
+  repairSuspiciousInvoiceFromPrevious(produtos);
 
   // Corrige romaneio com primeiro dígito perdido pelo OCR quando existe no mesmo
   // documento uma versão mais longa e inequívoca com o mesmo sufixo (ex.: 75646 -> 175646).
   const fullRomaneios = Array.from(new Set(produtos.map((item) => item.romaneio).filter((value) => value.length >= 6)));
+  const sixDigitPrefixOne = fullRomaneios.some((value) => /^1\d{5}$/.test(value));
   for (const product of produtos) {
     if (product.romaneio.length >= 6) continue;
     const candidates = fullRomaneios.filter((value) => value.endsWith(product.romaneio));
-    if (candidates.length === 1) product.romaneio = candidates[0];
+    if (candidates.length === 1) {
+      product.romaneio = candidates[0];
+      continue;
+    }
+    // Nos relatórios SIGA deste conjunto os romaneios são 6 dígitos iniciados
+    // por 1. Se o OCR-primary leu apenas 5 dígitos (75601), e o próprio PDF
+    // confirma esse padrão em outras linhas, recuperamos 175601.
+    if (ocrPrimary && sixDigitPrefixOne && /^\d{5}$/.test(product.romaneio)) {
+      product.romaneio = `1${product.romaneio}`;
+    }
   }
 
   // Última barreira contra duplicidade entre a leitura visual e a compacta.

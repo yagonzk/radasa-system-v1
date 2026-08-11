@@ -11,6 +11,7 @@ import Viagens from "./pages/Viagens";
 import Pedagios from "./pages/Pedagios";
 import Fechamentos from "./pages/Fechamentos";
 import Romaneios from "./pages/Romaneios";
+import OCR from "./pages/OCR";
 import Auth from "./pages/Auth";
 import ChangePassword from "./pages/ChangePassword";
 import Perfil from "./pages/Perfil";
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/pedagios" component={Pedagios} />
       <Route path="/romaneios" component={Romaneios} />
       <Route path="/manifestos" component={Romaneios} />
+      <Route path="/ocr" component={OCR} />
       <Route path="/fechamentos" component={Fechamentos} />
       <Route path="/abastecimentos" component={Abastecimentos} />
       <Route path="/ciot/gerar" component={CiotGerar} />
