@@ -2284,6 +2284,7 @@ interface Filters {
   valorDesconto: string;
   valorTotal: string;
   placa: string;
+  subcategoriaVeiculo: string;
   hodometro: string;
 }
 
@@ -2297,6 +2298,7 @@ const emptyFilters: Filters = {
   valorDesconto: "",
   valorTotal: "",
   placa: "",
+  subcategoriaVeiculo: "",
   hodometro: "",
 };
 
@@ -2322,6 +2324,16 @@ function escapeReportText(value: unknown) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+const subcategoriaVeiculoLabels: Record<string, string> = {
+  CAMINHAO: "Caminhão",
+  CARRO: "Carro",
+  MOTO: "Moto",
+};
+
+function formatSubcategoriaVeiculo(value: unknown) {
+  return subcategoriaVeiculoLabels[String(value ?? "")] ?? "Sem categoria";
 }
 
 export default function Abastecimentos() {
@@ -2367,6 +2379,7 @@ export default function Abastecimentos() {
         }
         if (filters.produto && !normalize(nomesProdutos).includes(normalize(filters.produto))) return false;
         if (filters.placa && !normalize(`${veiculo?.placa ?? ""} ${veiculo?.modelo ?? ""}`).includes(normalize(filters.placa))) return false;
+        if (filters.subcategoriaVeiculo && formatSubcategoriaVeiculo(veiculo?.subcategoria) !== filters.subcategoriaVeiculo) return false;
         if (filters.emissao && item.dataEmissao < filters.emissao) return false;
         if (filters.emissaoAte && item.dataEmissao > filters.emissaoAte) return false;
         if (filters.litros && !normalize(formatLitros(litros)).includes(normalize(filters.litros))) return false;
@@ -2439,6 +2452,7 @@ export default function Abastecimentos() {
     if (key === "cliente") return clientes.map((item) => formatClienteResumo(item));
     if (key === "produto") return produtos.map((item) => `${item.nome} - ${item.codigoInterno}`);
     if (key === "placa") return veiculos.map((item) => `${item.placa}${item.modelo ? ` - ${item.modelo}` : ""}`);
+    if (key === "subcategoriaVeiculo") return ["Caminhão", "Carro", "Moto", ...(veiculos.some((item) => !item.subcategoria) ? ["Sem categoria"] : [])];
     if (key === "litros") return Array.from(new Set<string>(items.map((item) => formatLitros((item.produtos ?? []).reduce((sum, produto) => sum + produto.quantidadeLitros, 0)))));
     if (key === "valorUnitario") return Array.from(new Set<string>(items.map((item) => {
       const litros = (item.produtos ?? []).reduce((sum, produto) => sum + produto.quantidadeLitros, 0);
@@ -2460,6 +2474,7 @@ export default function Abastecimentos() {
     { key: "valorDesconto", label: "Valor desconto", align: "right" },
     { key: "valorTotal", label: "Valor total", align: "right" },
     { key: "placa", label: "Placa" },
+    { key: "subcategoriaVeiculo", label: "Subcategoria" },
     { key: "hodometro", label: "Odômetro", align: "right" },
   ];
 
@@ -2501,10 +2516,10 @@ export default function Abastecimentos() {
       const cliente = clientes.find((entry) => entry.id === item.clienteId);
       const veiculo = veiculos.find((entry) => entry.id === item.veiculoId);
       const litros = (item.produtos ?? []).reduce((sum, produto) => sum + produto.quantidadeLitros, 0);
-      return `<tr><td>${escapeReportText(item.numeroNfe || "-")}</td><td>${escapeReportText(formatDate(item.dataEmissao))}</td><td>${escapeReportText(cliente?.nomeFantasia ?? "Não identificado")}</td><td>${escapeReportText(veiculo?.placa ?? "-")}</td><td>${escapeReportText(formatLitros(litros))}</td><td>${escapeReportText(formatBRL(item.valorTotal))}</td></tr>`;
+      return `<tr><td>${escapeReportText(item.numeroNfe || "-")}</td><td>${escapeReportText(formatDate(item.dataEmissao))}</td><td>${escapeReportText(cliente?.nomeFantasia ?? "Não identificado")}</td><td>${escapeReportText(veiculo?.placa ?? "-")}</td><td>${escapeReportText(formatSubcategoriaVeiculo(veiculo?.subcategoria))}</td><td>${escapeReportText(formatLitros(litros))}</td><td>${escapeReportText(formatBRL(item.valorTotal))}</td></tr>`;
     }).join("");
 
-    reportWindow.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Abastecimentos</title><style>body{font-family:Arial,sans-serif;color:#17213f;margin:36px}h1{margin:0;font-size:24px}.sub{color:#5f6b85;margin:7px 0 24px}.cards{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px}.card{border:1px solid #dbe3f0;border-radius:8px;padding:12px;min-width:165px}.card small{display:block;color:#68738a;margin-bottom:5px}.card strong{font-size:18px}table{border-collapse:collapse;width:100%;font-size:12px}th{background:#17213f;color:#fff;text-align:left}th,td{padding:9px;border:1px solid #dbe3f0}td:nth-child(5),td:nth-child(6){text-align:right}tr{break-inside:avoid}@media print{body{margin:18px}thead{display:table-header-group}}</style></head><body><h1>Relatório de Abastecimentos</h1><p class="sub">Gerado em ${escapeReportText(new Date().toLocaleString("pt-BR"))} - ${filteredItems.length} registro(s) conforme os filtros ativos.</p><div class="cards">${metricas.map(([label, value]) => `<div class="card"><small>${escapeReportText(label)}</small><strong>${escapeReportText(value)}</strong></div>`).join("")}</div><h2>Notas fiscais</h2><table><thead><tr><th>NF</th><th>Emissão</th><th>Posto/Cliente</th><th>Placa</th><th>Litros</th><th>Valor total</th></tr></thead><tbody>${linhas}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
+    reportWindow.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Abastecimentos</title><style>body{font-family:Arial,sans-serif;color:#17213f;margin:36px}h1{margin:0;font-size:24px}.sub{color:#5f6b85;margin:7px 0 24px}.cards{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px}.card{border:1px solid #dbe3f0;border-radius:8px;padding:12px;min-width:165px}.card small{display:block;color:#68738a;margin-bottom:5px}.card strong{font-size:18px}table{border-collapse:collapse;width:100%;font-size:12px}th{background:#17213f;color:#fff;text-align:left}th,td{padding:9px;border:1px solid #dbe3f0}td:nth-child(6),td:nth-child(7){text-align:right}tr{break-inside:avoid}@media print{body{margin:18px}thead{display:table-header-group}}</style></head><body><h1>Relatório de Abastecimentos</h1><p class="sub">Gerado em ${escapeReportText(new Date().toLocaleString("pt-BR"))} - ${filteredItems.length} registro(s) conforme os filtros ativos.</p><div class="cards">${metricas.map(([label, value]) => `<div class="card"><small>${escapeReportText(label)}</small><strong>${escapeReportText(value)}</strong></div>`).join("")}</div><h2>Notas fiscais</h2><table><thead><tr><th>NF</th><th>Emissão</th><th>Posto/Cliente</th><th>Placa</th><th>Subcategoria</th><th>Litros</th><th>Valor total</th></tr></thead><tbody>${linhas}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
     reportWindow.document.close();
     setRelatorioOpen(false);
   };
@@ -2561,10 +2576,10 @@ export default function Abastecimentos() {
           <div className="w-full min-w-0 overflow-hidden">
             <table className="w-full max-w-full table-fixed text-xs">
               <colgroup>
-                {/* Layout simétrico: Cliente usa 19% e todas as demais 9 colunas usam exatamente 9%. */}
-                <col style={{ width: "19%" }} />
-                {Array.from({ length: 9 }).map((_, index) => (
-                  <col key={`abastecimento-col-${index}`} style={{ width: "9%" }} />
+                {/* Cliente recebe mais espaço; as demais colunas dividem o restante igualmente. */}
+                <col style={{ width: "18%" }} />
+                {Array.from({ length: 10 }).map((_, index) => (
+                  <col key={`abastecimento-col-${index}`} style={{ width: "8.2%" }} />
                 ))}
               </colgroup>
               <thead className="border-b border-border bg-muted/30">
@@ -2637,7 +2652,7 @@ export default function Abastecimentos() {
               </thead>
               <tbody>
                 {filteredItems.length === 0 ? (
-                  <tr><td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">Nenhum abastecimento encontrado.</td></tr>
+                  <tr><td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">Nenhum abastecimento encontrado.</td></tr>
                 ) : paginatedItems.map((item) => {
                   const cliente = clientes.find((entry) => entry.id === item.clienteId);
                   const veiculo = veiculos.find((entry) => entry.id === item.veiculoId);
@@ -2653,6 +2668,7 @@ export default function Abastecimentos() {
                       <td className="overflow-hidden px-3 py-3 text-center align-middle tabular-nums text-muted-foreground"><span className="block whitespace-nowrap">{formatBRL(item.valorDesconto)}</span></td>
                       <td className="overflow-hidden px-3 py-3 text-center align-middle font-bold tabular-nums text-primary"><span className="block whitespace-nowrap">{formatBRL(item.valorTotal)}</span></td>
                       <td className="overflow-hidden px-3 py-3 text-center align-middle font-medium"><span className="block whitespace-nowrap">{veiculo?.placa ?? "—"}</span></td>
+                      <td className="overflow-hidden px-3 py-3 text-center align-middle text-muted-foreground"><span className="block whitespace-nowrap">{formatSubcategoriaVeiculo(veiculo?.subcategoria)}</span></td>
                       <td className="overflow-hidden px-3 py-3 text-center align-middle tabular-nums text-muted-foreground"><span className="block whitespace-nowrap">{formatOdometro(item.hodometro)}</span></td>
                       <td className="overflow-hidden px-3 py-3 align-middle">
                         <div className="flex w-full items-center justify-center gap-1">

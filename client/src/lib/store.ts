@@ -38,7 +38,8 @@ export interface EstoqueResumo { produto:Produto; entradas:number; saidas:number
 export interface Local { id: string; cidade: string; valorComissao: number; createdAt: string; }
 export interface ViagemFechamento { localId: string; quantidade: number; }
 export interface Fechamento { id: string; motoristaId: string; dataInicio: string; dataFim: string; viagens: ViagemFechamento[]; valorTotal: number; createdAt: string; }
-export interface Veiculo { id: string; placa: string; modelo?: string; quantidadePneus?: number; quantidadeEstepes?: number; createdAt: string; }
+export type SubcategoriaVeiculo = "CAMINHAO" | "CARRO" | "MOTO";
+export interface Veiculo { id: string; placa: string; modelo?: string; subcategoria?: SubcategoriaVeiculo | null; quantidadePneus?: number; quantidadeEstepes?: number; createdAt: string; }
 export interface Viagem { id: string; placa: string; motoristaId: string; valorFrete: number; dataManifesto: string; cidadeEntrega: string; distanciaKm: number; valorPedagio: number; valorDiaria: number; valorAbastecimento: number; valorChapa: number; createdAt: string; }
 export type TipoManifesto = "Bonificação - Lebrinha" | "Acertar c/ Lebrinha" | "Receber c/ Cliente";
 export interface ManifestoProduto { id?: string; produtoId: string; clienteId?: string | null; romaneio?: string; notaFiscal?: string; serieNf?: string; instrucaoCobranca?: string; quantidade: number; valorUnitario: number; valorTotal: number; tipoManifesto?: TipoManifesto; pagoCliente?: boolean | null; }

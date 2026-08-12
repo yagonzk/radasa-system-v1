@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useVeiculos, type Veiculo } from "@/lib/store";
+import { useVeiculos, type SubcategoriaVeiculo, type Veiculo } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -17,9 +18,16 @@ import { toast } from "sonner";
 interface FormState {
   placa: string;
   modelo: string;
+  subcategoria: SubcategoriaVeiculo | "";
 }
 
-const emptyForm: FormState = { placa: "", modelo: "" };
+const emptyForm: FormState = { placa: "", modelo: "", subcategoria: "" };
+
+const subcategoriaLabels: Record<SubcategoriaVeiculo, string> = {
+  CAMINHAO: "Caminhão",
+  CARRO: "Carro",
+  MOTO: "Moto",
+};
 
 function normalizePlate(value: unknown) {
   return String(value ?? "")
@@ -48,7 +56,7 @@ export default function VeiculoTab() {
   const filteredItems = useMemo(() => {
     const normalizedQuery = normalizeSearch(query).trim();
     if (!normalizedQuery) return items;
-    return items.filter((item) => normalizeSearch([item.placa, item.modelo].join(" ")).includes(normalizedQuery));
+    return items.filter((item) => normalizeSearch([item.placa, item.modelo, item.subcategoria ? subcategoriaLabels[item.subcategoria] : "Sem categoria"].join(" ")).includes(normalizedQuery));
   }, [items, query]);
 
   const handleOpenCreate = () => {
@@ -58,7 +66,7 @@ export default function VeiculoTab() {
   };
 
   const handleOpenEdit = (item: Veiculo) => {
-    setForm({ placa: formatPlate(item.placa), modelo: item.modelo || "" });
+    setForm({ placa: formatPlate(item.placa), modelo: item.modelo || "", subcategoria: item.subcategoria || "" });
     setEditingId(item.id);
     setOpen(true);
   };
@@ -76,13 +84,18 @@ export default function VeiculoTab() {
       return;
     }
 
+    if (!form.subcategoria) {
+      toast.error("Selecione a subcategoria do veículo.");
+      return;
+    }
+
     setSaving(true);
     try {
       if (editingId) {
-        await update(editingId, { placa: placaFormatada, modelo: form.modelo });
+        await update(editingId, { placa: placaFormatada, modelo: form.modelo, subcategoria: form.subcategoria });
         toast.success("Veículo atualizado com sucesso!");
       } else {
-        await create({ placa: placaFormatada, modelo: form.modelo });
+        await create({ placa: placaFormatada, modelo: form.modelo, subcategoria: form.subcategoria });
         toast.success("Veículo cadastrado com sucesso!");
       }
       setOpen(false);
@@ -108,6 +121,13 @@ export default function VeiculoTab() {
       ),
     },
     {
+      key: "subcategoria",
+      label: "Subcategoria",
+      render: (item: Veiculo) => (
+        <span className="font-medium">{item.subcategoria ? subcategoriaLabels[item.subcategoria] : "Sem categoria"}</span>
+      ),
+    },
+    {
       key: "modelo",
       label: "Modelo",
       render: (item: Veiculo) => (
@@ -121,7 +141,7 @@ export default function VeiculoTab() {
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex w-full flex-col gap-3 sm:max-w-xl">
           <p className="text-sm text-muted-foreground">{items.length} veículo(s) cadastrado(s)</p>
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por placa ou modelo..." />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por placa, modelo ou subcategoria..." />
         </div>
         <Button onClick={handleOpenCreate} size="sm">
           <Plus className="mr-1.5 h-4 w-4" />
@@ -152,6 +172,21 @@ export default function VeiculoTab() {
                 placeholder="Ex: ABC-1234"
                 maxLength={8}
               />
+            </FormField>
+            <FormField label="Subcategoria do veículo">
+              <Select
+                value={form.subcategoria}
+                onValueChange={(value) => setForm({ ...form, subcategoria: value as SubcategoriaVeiculo })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione Caminhão, Carro ou Moto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CAMINHAO">Caminhão</SelectItem>
+                  <SelectItem value="CARRO">Carro</SelectItem>
+                  <SelectItem value="MOTO">Moto</SelectItem>
+                </SelectContent>
+              </Select>
             </FormField>
             <FormField label="Modelo (opcional)">
               <Input

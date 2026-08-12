@@ -49,6 +49,12 @@ enum TipoOperacaoCiot {
   TAC_AGREGADO
 }
 
+enum SubcategoriaVeiculo {
+  CAMINHAO
+  CARRO
+  MOTO
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -153,6 +159,7 @@ model Veiculo {
   id                     String           @id @default(cuid())
   placa                  String
   modelo                 String?
+  subcategoria           SubcategoriaVeiculo?
   quantidadePneus        Int              @default(10)
   quantidadeEstepes      Int              @default(1)
   createdAt              DateTime         @default(now())
@@ -165,6 +172,7 @@ model Veiculo {
   ciots                  Ciot[]
 
   @@index([placa])
+  @@index([subcategoria])
   @@map("veiculos")
 }
 
